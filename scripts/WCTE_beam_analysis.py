@@ -88,7 +88,7 @@ for input_file in args.input_files:
     print(f"\n{'#'*60}\n  {os.path.basename(input_file)}\n{'#'*60}")
 
     #Set up a beam analysis class
-    ana = BeamAnalysis(run_number, run_momentum, n_eveto_group, n_tagger_group, there_is_ACT5, args.output_dir, pdf_name)
+    ana = BeamAnalysis(run_number, run_momentum, n_eveto_group, n_tagger_group, there_is_ACT5, args.output_dir, pdf_name, is_beam_paper_analysis = True)
 
     #Store into memory the number of events desired,
     # set require_t5 to False if you do not require that the particle reaches T5

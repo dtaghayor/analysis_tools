@@ -278,7 +278,7 @@ def fit_three_gaussians(entries, bin_centers):
 
 
 class BeamAnalysis:
-    def __init__(self, run_number, run_momentum, n_eveto, n_tagger, there_is_ACT5, output_dir, pdf_name=None):
+    def __init__(self, run_number, run_momentum, n_eveto, n_tagger, there_is_ACT5, output_dir, pdf_name=None, is_beam_paper_analysis = False):
         #Store the run characteristics
         self.run_number, self.run_momentum = run_number, run_momentum
         self.n_eveto, self.n_tagger = n_eveto, n_tagger
@@ -292,6 +292,8 @@ class BeamAnalysis:
         self.channel_mapping = {12: "ACT0-L", 13: "ACT0-R", 14: "ACT1-L", 15: "ACT1-R", 16: "ACT2-L", 17: "ACT2-R", 18: "ACT3-L", 19: "ACT3-R", 20: "ACT4-L", 21: "ACT4-R", 22: "ACT5-L", 23: "ACT5-R"}
         print("Initialised the BeamAnalysis instance")
         print(f"Plots will be saved to {pdf_path}")
+
+        self.beam_paper_analysis = is_beam_paper_analysis
         
         
         
@@ -353,8 +355,8 @@ class BeamAnalysis:
         
         if self.run_momentum > 0:
             #Define the cut lines in terms of the expected tof
-            _, _, proton_tof_cut_array, _, _ =self.give_theoretical_TOF("Protons", np.array([self.run_momentum * 1.2])) #the smallest TOF value for a proton, considered to be the TOF at 120% of the theoretical proton momentum
-            _, _, deuteron_tof_cut_array, _, _ =self.give_theoretical_TOF("Deuteron", np.array([self.run_momentum * 1.2])) #the smallest TOF value for a deuteron, considered to be the TOF at 120% of the theoretical proton momentum
+            _, _, proton_tof_cut_array, _, _ =self.give_theoretical_TOF("Protons", np.array([self.run_momentum * 1.1])) #the smallest TOF value for a proton, considered to be the TOF at 110% of the theoretical proton momentum
+            _, _, deuteron_tof_cut_array, _, _ =self.give_theoretical_TOF("Deuteron", np.array([self.run_momentum * 1.1])) #the smallest TOF value for a deuteron, considered to be the TOF at 110% of the theoretical proton momentum
 
             self.proton_tof_cut = proton_tof_cut_array[0]
             self.deuteron_tof_cut = deuteron_tof_cut_array[0]
@@ -1302,7 +1304,7 @@ class BeamAnalysis:
             
             
         
-        if self.run_momentum < 400:
+        if self.run_momentum < 350:
             self.df["is_helium3"] = False
 
         else:
@@ -2245,6 +2247,13 @@ class BeamAnalysis:
         
         self.particle_mom_final_mean = {"electron": 0,"muon": 0,"pion": 0,"proton": 0,"deuteron":0,"helium3":0}
         self.particle_mom_final_mean_err = {"electron": 0,"muon": 0,"pion": 0,"proton": 0,"deuteron":0,"helium3":0}
+
+        #same for T0T4 tof
+        self.particle_mom_mean_t0t4 = {"electron": 0,"muon": 0,"pion": 0,"proton": 0,"deuteron":0,"helium3":0}
+        self.particle_mom_mean_t0t4_err = {"electron": 0,"muon": 0,"pion": 0,"proton": 0,"deuteron":0,"helium3":0}
+
+        self.particle_mom_final_mean_t0t4 = {"electron": 0,"muon": 0,"pion": 0,"proton": 0,"deuteron":0,"helium3":0}
+        self.particle_mom_final_mean_t0t4_err = {"electron": 0,"muon": 0,"pion": 0,"proton": 0,"deuteron":0,"helium3":0}
         
         
         for particle in ["Muons", "Pions", "Protons", "Deuteron", "Helium3"]:
@@ -2311,6 +2320,12 @@ class BeamAnalysis:
                 self.particle_mom_mean_err[particles_tof_names[particle]] = extrapolated_err_mom
                 self.particle_mom_final_mean[particles_tof_names[particle]] = extrapolated_mean_final_mom
                 self.particle_mom_final_mean_err[particles_tof_names[particle]] = extrapolated_err_final_mom
+
+                #same thing for the T0T4 TOF    
+                self.particle_mom_mean_t0t4[particles_tof_names[particle]] = extrapolated_mean_mom_t0t4
+                self.particle_mom_mean_t0t4_err[particles_tof_names[particle]] = extrapolated_err_mom_t0t4
+                self.particle_mom_final_mean_t0t4[particles_tof_names[particle]] = extrapolated_mean_final_mom_t0t4
+                self.particle_mom_final_mean_t0t4_err[particles_tof_names[particle]] = extrapolated_err_final_mom_t0t4  
           
         print("Initial momentum reconstructed: ", self.particle_mom_mean)
 
@@ -2324,7 +2339,7 @@ class BeamAnalysis:
         if sum(self.df["is_proton"]) > 20:
             there_is_proton = True
         #Define the bounds inside which we will attempt the fits 
-        if self.run_momentum > 600:
+        if self.run_momentum > 350:
             times_of_flight_min = [ 8, 5, -70]
             times_of_flight_max = [60, 50, 70 ]
 
@@ -2361,14 +2376,19 @@ class BeamAnalysis:
         
         
          ##### Second do T0-T4 ###########
-        time_of_flight_t0t4 = self.df["tof_t0t4"]
+        
+
+        ### Implement the requirement that the T4 left and right are the same within 3ns (so we do not have the jump)
+        self.df_goodT4 = self.df[np.abs(self.df["t4_l"] - self.df["t4_r"])< 3]
+
+        time_of_flight_t0t4 = self.df_goodT4["tof_t0t4"]
         
        
         bins_tof_t0t4 = np.arange(times_of_flight_min[0]+10, times_of_flight_max[0]+10, 0.2)
         bin_centers_t0t4 = (bins_tof_t0t4[1:] + bins_tof_t0t4[:-1])/2
         
         #Fit the electron TOF
-        electron_tof_t0t4 = time_of_flight_t0t4[self.df["is_electron"] == 1]
+        electron_tof_t0t4 = time_of_flight_t0t4[self.df_goodT4["is_electron"] == 1]
         h_t0t4, _ = np.histogram(electron_tof_t0t4, bins = bins_tof_t0t4)
         
         
@@ -2398,6 +2418,11 @@ class BeamAnalysis:
         #Correct the TOF by this offset, decide to make a new column, cleaner
         self.df["tof_corr"] = self.df["tof"] + t0
         self.df["tof_t0t4_corr"] = self.df["tof_t0t4"] + t0_t0t4
+
+        #there adding the corrected T4 T0 TOF
+        self.df_goodT4 = self.df[np.abs(self.df["t4_l"] - self.df["t4_r"])< 3]
+
+
         
         #Check TOF for each particle type
         h_mu, _ = np.histogram(self.df["tof_corr"][self.df["is_muon"]==1], bins = bins_tof)
@@ -2414,14 +2439,14 @@ class BeamAnalysis:
         except: 
             popt_pi  = [0,0,0]
         
-        h_mu_t0t4, _ = np.histogram(self.df["tof_t0t4_corr"][self.df["is_muon"]==1], bins = bins_tof_t0t4)
+        h_mu_t0t4, _ = np.histogram(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_muon"]==1], bins = bins_tof_t0t4)
         try:
             popt_mu_t0t4, pcov_t0t4 = fit_gaussian(h_mu_t0t4, bin_centers_t0t4)
         except: 
             popt_mu_t0t4 = [0,0,0]
         
         
-        h_pi_t0t4, _ = np.histogram(self.df["tof_t0t4_corr"][self.df["is_pion"]==1], bins = bins_tof_t0t4)
+        h_pi_t0t4, _ = np.histogram(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_pion"]==1], bins = bins_tof_t0t4)
         
         try:
             popt_pi_t0t4, pcov_t0t4 = fit_gaussian(h_pi_t0t4, bin_centers_t0t4)
@@ -2432,23 +2457,23 @@ class BeamAnalysis:
             h_p, _ = np.histogram(self.df["tof_corr"][self.df["is_proton"]==1], bins = bins_tof)
             popt_p, pcov = fit_gaussian(h_p, bin_centers)
             
-            h_p_t0t4, _ = np.histogram(self.df["tof_t0t4_corr"][self.df["is_proton"]==1], bins = bins_tof_t0t4)
+            h_p_t0t4, _ = np.histogram(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_proton"]==1], bins = bins_tof_t0t4)
             try:
-                popt_p_t0t4, pcov_t0t4 = fit_three_gaussians(h_p_t0t4, bin_centers_t0t4)
+                popt_p_t0t4, pcov_t0t4 = fit_gaussian(h_p_t0t4, bin_centers_t0t4)
             except: 
-                popt_p_t0t4 = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+                popt_p_t0t4 = [0, 0, 0]
             
         if sum(self.df["is_deuteron"])>10:
             h_D, _ = np.histogram(self.df["tof_corr"][self.df["is_deuteron"]==1], bins = bins_tof)
             popt_D, pcov = fit_gaussian(h_D, bin_centers)
             
-            h_D_t0t4, _ = np.histogram(self.df["tof_t0t4_corr"][self.df["is_deuteron"]==1], bins = bins_tof_t0t4)
+            h_D_t0t4, _ = np.histogram(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_deuteron"]==1], bins = bins_tof_t0t4)
             popt_D_t0t4, pcov_t0t4 = fit_gaussian(h_D_t0t4, bin_centers_t0t4)
             
             try:
                 popt_D_t0t4, pcov_t0t4 = fit_gaussian(h_D_t0t4, bin_centers_t0t4)
             except: 
-                popt_D_t0t4 = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+                popt_D_t0t4 = [0, 0, 0]
             
             
         #Here, plot the TOF 
@@ -2521,34 +2546,34 @@ class BeamAnalysis:
         fig, ax = plt.subplots(figsize = (8, 6))
         
         #plot the distributions
-        ax.hist(self.df["tof_t0t4_corr"][self.df["is_electron"]==1], bins = bins_tof_t0t4, histtype = "step", label = f"Electrons: tof = {popt_t0t4[1]+t0_t0t4:.2f} "+ r"$\pm$"+ f" {popt_t0t4[2]:.2f} ns")  
-        ax.hist(self.df["tof_t0t4_corr"][self.df["is_muon"]==1], bins = bins_tof_t0t4, histtype = "step", label = f"Muons: tof = {popt_mu_t0t4[1]:.2f} "+ r"$\pm$"+ f" {popt_mu_t0t4[2]:.2f} ns")
-        ax.hist(self.df["tof_t0t4_corr"][self.df["is_pion"]==1], bins = bins_tof_t0t4, histtype = "step", label = f"Pions: tof = {popt_pi_t0t4[1]:.2f} "+ r"$\pm$"+ f" {popt_pi_t0t4[2]:.2f} ns")
+        ax.hist(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_electron"]==1], bins = bins_tof_t0t4, histtype = "step", label = f"Electrons: tof = {popt_t0t4[1]+t0_t0t4:.2f} "+ r"$\pm$"+ f" {popt_t0t4[2]:.2f} ns")  
+        ax.hist(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_muon"]==1], bins = bins_tof_t0t4, histtype = "step", label = f"Muons: tof = {popt_mu_t0t4[1]:.2f} "+ r"$\pm$"+ f" {popt_mu_t0t4[2]:.2f} ns")
+        ax.hist(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_pion"]==1], bins = bins_tof_t0t4, histtype = "step", label = f"Pions: tof = {popt_pi_t0t4[1]:.2f} "+ r"$\pm$"+ f" {popt_pi_t0t4[2]:.2f} ns")
         
         
         if there_is_proton:
-            ax.hist(self.df["tof_t0t4_corr"][self.df["is_proton"]==1], bins = bins_tof_t0t4, histtype = "step", label = f"Protons: tof = {popt_p_t0t4[1]:.2f} "+ r"$\pm$"+ f" {popt_p_t0t4[2]:.2f} ns")
+            ax.hist(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_proton"]==1], bins = bins_tof_t0t4, histtype = "step", label = f"Protons: tof = {popt_p_t0t4[1]:.2f} "+ r"$\pm$"+ f" {popt_p_t0t4[2]:.2f} ns")
             
             
-        if sum(self.df["is_deuteron"])>10:
-            ax.hist(self.df["tof_t0t4_corr"][self.df["is_deuteron"]==1], bins = bins_tof_t0t4, histtype = "step", label = f"Deuterons: tof = {popt_D_t0t4[1]:.2f} "+ r"$\pm$"+ f" {popt_D_t0t4[2]:.2f} ns")
+        if sum(self.df_goodT4["is_deuteron"])>10:
+            ax.hist(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_deuteron"]==1], bins = bins_tof_t0t4, histtype = "step", label = f"Deuterons: tof = {popt_D_t0t4[1]:.2f} "+ r"$\pm$"+ f" {popt_D_t0t4[2]:.2f} ns")
            
         
             
-        if sum(self.df["is_helium3"])>20:
+        if sum(self.df_goodT4["is_helium3"])>20:
             
             try:
-                h_He3_t0t4, _ = np.histogram(self.df["tof_t0t4_corr"][self.df["is_helium3"]==1], bins = bins_tof_t0t4)
+                h_He3_t0t4, _ = np.histogram(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_helium3"]==1], bins = bins_tof_t0t4)
                 popt_He3_t0t4, pcov_t0t4 = fit_gaussian(h_He3_t0t4, bin_centers_t0t4)
-                ax.hist(self.df["tof_t0t4_corr"][self.df["is_helium3"]==1], bins = bins_tof_t0t4, histtype = "step", label = f"Helium3 nuclei: tof = {popt_He3_t0t4[1]:.2f} "+ r"$\pm$"+ f" {popt_He3_t0t4[2]:.2f} ns")
+                ax.hist(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_helium3"]==1], bins = bins_tof_t0t4, histtype = "step", label = f"Helium3 nuclei: tof = {popt_He3_t0t4[1]:.2f} "+ r"$\pm$"+ f" {popt_He3_t0t4[2]:.2f} ns")
                 ax.plot(bins_tof_t0t4, gaussian(bins_tof_t0t4, popt_He3_t0t4[0], popt_He3_t0t4[1], popt_He3_t0t4[2]), "--", color = "k")
                 
                 
             except:
                 popt_He3 = [0, 0, 0]
-                mean = self.df["tof_t0t4_corr"][self.df["is_helium3"]==1].mean()
-                std = self.df["tof_t0t4_corr"][self.df["is_helium3"]==1].std()
-                ax.hist(self.df["tof_t0t4_corr"][self.df["is_helium3"]==1], bins = bins_tof, histtype = "step", label = f"Helium3 nuclei: tof = {mean:.2f} "+ r"$\pm$"+ f" {std:.2f} ns")
+                mean = self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_helium3"]==1].mean()
+                std = self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_helium3"]==1].std()
+                ax.hist(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_helium3"]==1], bins = bins_tof, histtype = "step", label = f"Helium3 nuclei: tof = {mean:.2f} "+ r"$\pm$"+ f" {std:.2f} ns")
 
             
       
@@ -2561,22 +2586,11 @@ class BeamAnalysis:
         
         
         if there_is_proton:
-            ax.plot(bins_tof_t0t4, three_gaussians(bins_tof_t0t4, popt_p_t0t4[0], popt_p_t0t4[1], popt_p_t0t4[2], popt_p_t0t4[3], popt_p_t0t4[4], popt_p_t0t4[5], popt_p_t0t4[6], popt_p_t0t4[7], popt_p_t0t4[8]), "--", color = "k")
+            ax.plot(bins_tof_t0t4, gaussian(bins_tof_t0t4, popt_p_t0t4[0], popt_p_t0t4[1], popt_p_t0t4[2]), "--", color = "k")
             
-            #choose the gaussian corresponding to the highest amplitude
-            if popt_p_t0t4[0] > popt_p_t0t4[3] and popt_p_t0t4[0] > popt_p_t0t4[6]:
-               
-                mean_proton_T0T4_tof = popt_p_t0t4[1]
-                std_proton_T0T4_tof = popt_p_t0t4[2]
+            mean_proton_T0T4_tof = popt_p_t0t4[1]
+            std_proton_T0T4_tof = popt_p_t0t4[2]
                 
-            elif  popt_p_t0t4[3]>popt_p_t0t4[6]:
-                mean_proton_T0T4_tof = popt_p_t0t4[4]
-                std_proton_T0T4_tof = popt_p_t0t4[5]
-                
-                
-            else:
-                mean_proton_T0T4_tof = popt_p_t0t4[7]
-                std_proton_T0T4_tof = popt_p_t0t4[8]
                 
             
         if sum(self.df["is_deuteron"])>20:
@@ -2834,11 +2848,13 @@ class BeamAnalysis:
             
            
         for col in self.df.columns:
-            if col in ["is_muon", "is_electron", "is_pion", "is_proton",
-                       "is_deuteron", "is_helium3",
-                       "final_momentum", "final_momentum_error",
-                       "initial_momentum", "initial_momentum_error"]:
-                continue
+            if self.beam_paper_analysis == False:
+                if col in ["is_muon", "is_electron", "is_pion", "is_proton",
+                        "is_deuteron", "is_helium3",
+                        "final_momentum", "final_momentum_error",
+                        "initial_momentum", "initial_momentum_error"]:
+                    continue
+            
 
             values = self.df[col].copy()
 
@@ -2949,9 +2965,20 @@ class BeamAnalysis:
                       ("momentum_mean", self.particle_mom_mean),
                       ("momentum_eom", self.particle_mom_mean_err),
                       ("momentum_after_beam_window_mean", self.particle_mom_final_mean),
-                      ("momentum_after_beam_window_eom", self.particle_mom_final_mean_err)]:
+                      ("momentum_after_beam_window_eom", self.particle_mom_final_mean_err),
+                      ("tof_t0t4_mean", self.particle_tof_t0t4_mean),
+                      ("tof_t0t4_std", self.particle_tof_t0t4_std),
+                      ("tof_t0t4_eom", self.particle_tof_t0t4_eom),
+
+    
+                      ("momentum_t0t4_mean", self.particle_mom_mean_t0t4),
+                      ("momentum_t0t4_eom", self.particle_mom_mean_t0t4_err),
+                      ("momentum_after_beam_window_t0t4_mean", self.particle_mom_final_mean_t0t4),
+                      ("momentum_after_beam_window_t0t4_eom", self.particle_mom_final_mean_t0t4_err)]:
                     for key, value in d.items():
                         results[f"{prefix}_{key}"] = np.array([value], dtype=np.float64)
+
+                        
 
                     
 #             results["n_electrons"] = np.array([sum(self.df_all["is_electron"]) ], dtype=np.float64) 
@@ -2966,7 +2993,7 @@ class BeamAnalysis:
                 results["n_triggers_total"] = nTriggers  
 
 
-                f["scalar_results"] = results 
+                f.mktree("scalar_results", results)
             
             print(f"Saved output file to {output_name}")
             
