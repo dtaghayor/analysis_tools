@@ -2222,7 +2222,7 @@ class BeamAnalysis:
         return initial_momentum_guess, live_momentum, T0T1_theoretical_TOF, T0T4_theoretical_TOF, T4T1_theoretical_TOF
 
 
-    def find_momentum(self, initial_momentum, theoretical_tof, measured_tof, err_measured_tof, give_both_bounds = False):
+    def find_momentum(self, initial_momentum, theoretical_tof, measured_tof, err_measured_tof, give_both_bounds = False, is_helium3 = False):
         """
         Solve TOF(p) - measured_tof = 0
         """
@@ -2230,38 +2230,88 @@ class BeamAnalysis:
         tof_func = interp1d(
             initial_momentum,
             theoretical_tof,
-            kind='cubic',          # or 'quadratic'
+            kind='quadratic',          # or 'quadratic'
             bounds_error=False,
             fill_value="extrapolate"
         )
-        def give_guess(meas_tof):
+
+        factor = 1
+        if is_helium3:
+            factor = 2
+
+        def give_guess(meas_tof, reference_tof = None):
             def f(p):
                 return tof_func(p) - meas_tof
 
             #Make sure there is a phase change between the points that we are trying to interpolate between, otherwise it beaks
-            for i in range(len(initial_momentum) - 1):
+            # Default behaviour for nominal solution
+
+            # # find closest index to nominal solution
+            # center_idx = np.argmin(np.abs(initial_momentum - factor * self.run_momentum))
+
+            # lower_side =  np.argmin(np.abs(initial_momentum - factor * (self.rsun_momentum-250)))
+            # higher_side =  np.argmin(np.abs(initial_momentum - factor * (self.run_momentum+250)))
+
+               # find closest index to nominal solution
+            center_idx = np.argmin(np.abs(theoretical_tof - measured_tof))
+
+            # lower_side =  center_idx - 10 
+            # higher_side =   center_idx + 10
+
+            # return (initial_momentum[center_idx-1]+initial_momentum[center_idx-1])/2
+
+
+            # if meas_tof >= reference_tof:
+
+            #     scan_range = range(higher_side, lower_side, -1)
+
+            #     return 
+            # else:
+            #     scan_range = range(lower_side, higher_side, 1)
+
+
+            # else:
+
+            #     # higher TOF -> lower momentum
+            #     if meas_tof > reference_tof:
+
+            #         scan_range = range(center_idx - 1, -1, -1)
+
+            #     # lower TOF -> higher momentum
+            #     else:
+
+            #         scan_range = range(center_idx, len(initial_momentum) - 1, 1)
+
+            for i in range(len(initial_momentum)):
+
                 p1 = initial_momentum[i]
                 p2 = initial_momentum[i + 1]
 
                 f1 = f(p1)
                 f2 = f(p2)
 
-                # Exact solution at grid point
+                if np.isnan(f1) or np.isnan(f2):
+                    continue
+
+                # exact match
                 if f1 == 0:
                     return p1
 
-                # Sign change detected
+                # bracket found
                 if f1 * f2 < 0:
                     return brentq(f, p1, p2)
+
             return 0
 
         
-        momentum_guess = give_guess(measured_tof)
 
-        momentum_low = give_guess(measured_tof - err_measured_tof)
+        
+        momentum_guess = give_guess(measured_tof, measured_tof)
+
+        momentum_low = give_guess(measured_tof - err_measured_tof, measured_tof)
 
         try:
-            momentum_high =  give_guess(measured_tof + err_measured_tof)
+            momentum_high =  give_guess(measured_tof + err_measured_tof, measured_tof)
         except:
             momentum_high = 2 * momentum_guess-momentum_low
 
@@ -2551,8 +2601,10 @@ class BeamAnalysis:
 
             if measured_tof_mean >= 0.2:
 
+                is_helium3 = False
+
                 if particle == "Muons" or particle == "Pions":
-                    momentum_guess = np.linspace(190, 2000, 56)
+                    momentum_guess = np.linspace(140, 1900, 100)
 
                 elif particle == "Protons":
                     momentum_guess = np.linspace(350, 1900, 66)
@@ -2562,11 +2614,12 @@ class BeamAnalysis:
 
                 elif particle == "Helium3":
                     momentum_guess = np.linspace(850, 1900, 36)
+                    is_helium3 = True
 
                 initial_momentum_th, final_momentum_th, T0T1_TOF_th, T0T4_TOF_th, T4T1_TOF_th = \
                     self.give_theoretical_TOF(particle, momentum_guess)
 
-                print(f"{particle}: final momentum {final_momentum_th}")
+                # print(f"{particle}: final momentum {final_momentum_th}")
 
                 fig, ax = plt.subplots(figsize=(8, 6))
 
@@ -2627,7 +2680,7 @@ class BeamAnalysis:
                         T0T1_TOF_th,
                         measured_tof_mean,
                         measured_tof_error,
-                        True
+                        True, is_helium3
                     )
 
                 # --- T0T1 final momentum ---
@@ -2637,7 +2690,7 @@ class BeamAnalysis:
                         T0T1_TOF_th,
                         measured_tof_mean,
                         measured_tof_error,
-                        True
+                        True, is_helium3
                     )
 
                 # --- T0T4 initial momentum ---
@@ -2647,7 +2700,7 @@ class BeamAnalysis:
                         T0T4_TOF_th,
                         measured_tof_t0t4_mean,
                         measured_tof_t0t4_error,
-                        True
+                        True, is_helium3
                     )
 
                 # --- T0T4 final momentum ---
@@ -2657,7 +2710,7 @@ class BeamAnalysis:
                         T0T4_TOF_th,
                         measured_tof_t0t4_mean,
                         measured_tof_t0t4_error,
-                        True
+                        True, is_helium3
                     )
                 
                 if np.isnan(extrapolated_mean_mom) or np.isnan(extrapolated_mean_final_mom):
@@ -2750,7 +2803,7 @@ class BeamAnalysis:
                 self.particle_mom_final_mean_t0t4_err_minus[particles_tof_names[particle]] = extrapolated_err_final_mom_t0t4_minus
                 self.particle_mom_final_mean_t0t4_err_plus[particles_tof_names[particle]] = extrapolated_err_final_mom_t0t4_plus
 
-            print("Initial momentum reconstructed: ", self.particle_mom_mean)        
+        print("Initial momentum reconstructed: ", self.particle_mom_mean)        
             
     def measure_particle_TOF(self):
         '''Measure the TOF for each of the particles accounting for any offsets between the electron TOF and L/c'''
@@ -3665,7 +3718,7 @@ class BeamAnalysis:
         for col in self.df.columns:
             if self.is_beam_paper_analysis == False:
                 if col in ["is_muon", "is_electron", "is_pion", "is_proton",
-                        "is_deuteron", "is_helium3",
+                        "is_deuteron", "is_helium3", "is_tighter_muon", "is_tighter_pion"
                         "final_momentum", "final_momentum_error",
                         "initial_momentum", "initial_momentum_error"]:
                     continue
@@ -4100,11 +4153,10 @@ class BeamAnalysis:
         #decide that there are a bin for each ten spills
 #         n_bins = int(max(spill_index)/10)
 
-        print("number of protons per spill", number_p_per_spill)
+        print("Mean number of protons per spill", np.array(number_p_per_spill).mean())
 
         min_number = max(max(number_e_per_spill), max(number_mu_per_spill), max(number_pi_per_spill), max(number_p_per_spill), max(number_D_per_spill), max(number_3He_per_spill))/min(n_pot_per_trigger)*1.5
 
-        print("min number", min_number, number_p_per_spill, n_pot_per_trigger)
         n_bins = np.linspace(0, min_number, 100)
         n_bins_narrow = np.linspace(0, min_number, 300)
         fig, ax = plt.subplots(figsize = (8, 6))

@@ -17,7 +17,7 @@ import argparse
 import os
 
 # Number of events to read in debug mode
-DEBUG_N_EVENTS = 5000
+DEBUG_N_EVENTS = 50000
 
 
 def parse_args():
@@ -134,15 +134,6 @@ for input_file in args.input_files:
 
         #estimate the number of events per POT
         ana.plot_number_particles_per_POT()
-
-        #When working towards the beam paper, refine the momentum measurement by making a tigheter selection
-
-        try:
-            if ana.is_beam_paper_analysis:
-                ana.refine_particle_momentum_using_TOF()
-        except: 
-            print("We could not refine the momentum estimate")
-            continue
 
 
         #Check the number of triggers that are rejected and why
