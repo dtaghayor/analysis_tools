@@ -2222,7 +2222,7 @@ class BeamAnalysis:
         return initial_momentum_guess, live_momentum, T0T1_theoretical_TOF, T0T4_theoretical_TOF, T4T1_theoretical_TOF
 
 
-    def find_momentum(self, initial_momentum, theoretical_tof, measured_tof, err_measured_tof, give_both_bounds = False, is_helium3 = False):
+    def find_momentum(self, initial_momentum, theoretical_tof, measured_tof, err_measured_tof, particle, give_both_bounds = False):
         """
         Solve TOF(p) - measured_tof = 0
         """
@@ -2234,86 +2234,43 @@ class BeamAnalysis:
             bounds_error=False,
             fill_value="extrapolate"
         )
-
-        factor = 1
-        if is_helium3:
-            factor = 2
-
-        def give_guess(meas_tof, reference_tof = None):
+        def give_guess(meas_tof):
             def f(p):
                 return tof_func(p) - meas_tof
 
             #Make sure there is a phase change between the points that we are trying to interpolate between, otherwise it beaks
-            # Default behaviour for nominal solution
-
-            # # find closest index to nominal solution
-            # center_idx = np.argmin(np.abs(initial_momentum - factor * self.run_momentum))
-
-            # lower_side =  np.argmin(np.abs(initial_momentum - factor * (self.rsun_momentum-250)))
-            # higher_side =  np.argmin(np.abs(initial_momentum - factor * (self.run_momentum+250)))
-
-               # find closest index to nominal solution
-            center_idx = np.argmin(np.abs(theoretical_tof - measured_tof))
-
-            # lower_side =  center_idx - 10 
-            # higher_side =   center_idx + 10
-
-            # return (initial_momentum[center_idx-1]+initial_momentum[center_idx-1])/2
-
-
-            # if meas_tof >= reference_tof:
-
-            #     scan_range = range(higher_side, lower_side, -1)
-
-            #     return 
-            # else:
-            #     scan_range = range(lower_side, higher_side, 1)
-
-
-            # else:
-
-            #     # higher TOF -> lower momentum
-            #     if meas_tof > reference_tof:
-
-            #         scan_range = range(center_idx - 1, -1, -1)
-
-            #     # lower TOF -> higher momentum
-            #     else:
-
-            #         scan_range = range(center_idx, len(initial_momentum) - 1, 1)
-
-            for i in range(len(initial_momentum)):
-
+            for i in range(len(initial_momentum) - 1):
                 p1 = initial_momentum[i]
                 p2 = initial_momentum[i + 1]
 
                 f1 = f(p1)
                 f2 = f(p2)
 
-                if np.isnan(f1) or np.isnan(f2):
-                    continue
-
-                # exact match
+                # Exact solution at grid point
                 if f1 == 0:
                     return p1
 
-                # bracket found
+                # Sign change detected
                 if f1 * f2 < 0:
                     return brentq(f, p1, p2)
-
             return 0
 
-        
+            
 
         
-        momentum_guess = give_guess(measured_tof, measured_tof)
+        momentum_guess = give_guess(measured_tof)
 
-        momentum_low = give_guess(measured_tof - err_measured_tof, measured_tof)
+        momentum_low = give_guess(measured_tof - err_measured_tof)
 
         try:
-            momentum_high =  give_guess(measured_tof + err_measured_tof, measured_tof)
+            momentum_high =  give_guess(measured_tof + err_measured_tof)
         except:
             momentum_high = 2 * momentum_guess-momentum_low
+
+        if (particle == "Muons" or particle == "Pions") and abs(self.run_momentum) > 650:
+            momentum_high = initial_momentum[np.argmin(abs(theoretical_tof-measured_tof + err_measured_tof))]
+
+            momentum_low = initial_momentum[np.argmin(abs(theoretical_tof-measured_tof - err_measured_tof))]
 
         # except ValueError:
         #     print(
@@ -2589,6 +2546,8 @@ class BeamAnalysis:
         #Make the TOF error a constant fraction of the sigma so the electron TOF uncertainty is 0.05ns (it should be the smallest)
         factor_uncertainty = 0.05/self.particle_tof_std["electron"]
 
+        factor_uncertainty_t0t4 = 0.05/self.particle_tof_t0t4_std["electron"]
+
         for particle in ["Muons", "Pions", "Protons", "Deuteron", "Helium3"]:
 
             measured_tof_mean = self.particle_tof_mean[particles_tof_names[particle]]
@@ -2597,14 +2556,12 @@ class BeamAnalysis:
             measured_tof_error = factor_uncertainty * self.particle_tof_std[particles_tof_names[particle]]
 
             measured_tof_t0t4_mean = self.particle_tof_t0t4_mean[particles_tof_names[particle]]
-            measured_tof_t0t4_error = factor_uncertainty * self.particle_tof_t0t4_std[particles_tof_names[particle]]
+            measured_tof_t0t4_error = factor_uncertainty_t0t4 * self.particle_tof_t0t4_std[particles_tof_names[particle]]
 
             if measured_tof_mean >= 0.2:
 
-                is_helium3 = False
-
                 if particle == "Muons" or particle == "Pions":
-                    momentum_guess = np.linspace(140, 1900, 100)
+                    momentum_guess = np.linspace(190, 2000, 56)
 
                 elif particle == "Protons":
                     momentum_guess = np.linspace(350, 1900, 66)
@@ -2614,7 +2571,6 @@ class BeamAnalysis:
 
                 elif particle == "Helium3":
                     momentum_guess = np.linspace(850, 1900, 36)
-                    is_helium3 = True
 
                 initial_momentum_th, final_momentum_th, T0T1_TOF_th, T0T4_TOF_th, T4T1_TOF_th = \
                     self.give_theoretical_TOF(particle, momentum_guess)
@@ -2663,7 +2619,7 @@ class BeamAnalysis:
                     label=f"Measured T0T4 TOF:\n"
                         f"{measured_tof_t0t4_mean:.2f} "
                         r"$\pm$"
-                        f" {measured_tof_t0t4_error:.2f} ns"
+                        f" {abs(measured_tof_t0t4_error):.2f} ns"
                 )
 
                 ax.axhspan(
@@ -2679,8 +2635,8 @@ class BeamAnalysis:
                         initial_momentum_th,
                         T0T1_TOF_th,
                         measured_tof_mean,
-                        measured_tof_error,
-                        True, is_helium3
+                        measured_tof_error,particle,
+                        True
                     )
 
                 # --- T0T1 final momentum ---
@@ -2689,8 +2645,8 @@ class BeamAnalysis:
                         final_momentum_th,
                         T0T1_TOF_th,
                         measured_tof_mean,
-                        measured_tof_error,
-                        True, is_helium3
+                        measured_tof_error,particle,
+                        True
                     )
 
                 # --- T0T4 initial momentum ---
@@ -2699,8 +2655,8 @@ class BeamAnalysis:
                         initial_momentum_th,
                         T0T4_TOF_th,
                         measured_tof_t0t4_mean,
-                        measured_tof_t0t4_error,
-                        True, is_helium3
+                        measured_tof_t0t4_error,particle,
+                        True
                     )
 
                 # --- T0T4 final momentum ---
@@ -2709,8 +2665,8 @@ class BeamAnalysis:
                         final_momentum_th,
                         T0T4_TOF_th,
                         measured_tof_t0t4_mean,
-                        measured_tof_t0t4_error,
-                        True, is_helium3
+                        measured_tof_t0t4_error,particle,
+                        True
                     )
                 
                 if np.isnan(extrapolated_mean_mom) or np.isnan(extrapolated_mean_final_mom):
@@ -3294,12 +3250,12 @@ class BeamAnalysis:
         }
         
         self.particle_tof_t0t4_std = {
-            "electron": popt_t0t4[2],
-            "muon": popt_mu_t0t4[2],
-            "pion": popt_pi_t0t4[2],
-            "proton": std_proton_T0T4_tof if there_is_proton else 0,
-            "deuteron": popt_D_t0t4[2] if sum(self.df["is_deuteron"])>20 else 0,
-            "helium3": popt_He3_t0t4[2] if sum(self.df["is_helium3"])>20 else 0,
+            "electron": abs(popt_t0t4[2]),
+            "muon": abs(popt_mu_t0t4[2]),
+            "pion": abs(popt_pi_t0t4[2]),
+            "proton": abs(std_proton_T0T4_tof) if there_is_proton else 0,
+            "deuteron": abs(popt_D_t0t4[2]) if sum(self.df["is_deuteron"])>20 else 0,
+            "helium3": abs(popt_He3_t0t4[2]) if sum(self.df["is_helium3"])>20 else 0,
           
         }
         
@@ -4157,8 +4113,10 @@ class BeamAnalysis:
 
         min_number = max(max(number_e_per_spill), max(number_mu_per_spill), max(number_pi_per_spill), max(number_p_per_spill), max(number_D_per_spill), max(number_3He_per_spill))/min(n_pot_per_trigger)*1.5
 
-        n_bins = np.linspace(0, min_number, 100)
-        n_bins_narrow = np.linspace(0, min_number, 300)
+        max_limit = min(min_number, abs(self.run_momentum)**2 * 25/770**2)
+
+        n_bins = np.linspace(0, max_limit, 100)
+        n_bins_narrow = np.linspace(0, max_limit, 300)
         fig, ax = plt.subplots(figsize = (8, 6))
         
         
@@ -4189,28 +4147,30 @@ class BeamAnalysis:
         except:
             popt  = [0, 0, 0]
         
-        h_p, _, _ = ax.hist(number_p_per_spill/n_pot_per_trigger, bins = n_bins, label = "Protons", color = "red", histtype = "step")
-        try:
-            popt, pcov = fit_gaussian(h_p, bin_centers)
-            plt.plot(n_bins_narrow, gaussian(n_bins_narrow, *popt), '--', color = "red", label = f"Gaussian fit: mean {popt[1]:.2f}, std {popt[2]:.2f}")
-        except:
-            popt  = [0, 0, 0]
+        if max(number_p_per_spill) > 0.01:
+            h_p, _, _ = ax.hist(number_p_per_spill/n_pot_per_trigger, bins = n_bins, label = "Protons", color = "red", histtype = "step")
+            try:
+                popt, pcov = fit_gaussian(h_p, bin_centers)
+                plt.plot(n_bins_narrow, gaussian(n_bins_narrow, *popt), '--', color = "red", label = f"Gaussian fit: mean {popt[1]:.2f}, std {popt[2]:.2f}")
+            except:
+                popt  = [0, 0, 0]
+        
+        if max(number_D_per_spill) > 0.01:
+            h_D, _, _ = ax.hist(number_D_per_spill/n_pot_per_trigger, bins = n_bins, label = "Deuterium", color = "black", histtype = "step")
+            try:
+                popt, pcov = fit_gaussian(h_D, bin_centers)
+                plt.plot(n_bins_narrow, gaussian(n_bins_narrow, *popt), '--', color = "black", label = f"Gaussian fit: mean {popt[1]:.2f}, std {popt[2]:.2f}")
+            except:
+                popt = [0, 0, 0]
         
         
-        h_D, _, _ = ax.hist(number_D_per_spill/n_pot_per_trigger, bins = n_bins, label = "Deuterium", color = "black", histtype = "step")
-        try:
-            popt, pcov = fit_gaussian(h_D, bin_centers)
-            plt.plot(n_bins_narrow, gaussian(n_bins_narrow, *popt), '--', color = "black", label = f"Gaussian fit: mean {popt[1]:.2f}, std {popt[2]:.2f}")
-        except:
-            popt = [0, 0, 0]
-        
-        
-        h_3He, _, _ = ax.hist(number_3He_per_spill/n_pot_per_trigger, bins = n_bins, label = "Helium3", color = "magenta", histtype = "step")
-        try:
-            popt, pcov = fit_gaussian(h_3He, bin_centers)
-            plt.plot(n_bins_narrow, gaussian(n_bins_narrow, *popt), '--', color = "magenta", label = f"Gaussian fit: mean {popt[1]:.2f}, std {popt[2]:.2f}")
-        except:
-            popt = [0, 0, 0]
+        if max(number_3He_per_spill) > 0.01:
+            h_3He, _, _ = ax.hist(number_3He_per_spill/n_pot_per_trigger, bins = n_bins, label = "Helium3", color = "magenta", histtype = "step")
+            try:
+                popt, pcov = fit_gaussian(h_3He, bin_centers)
+                plt.plot(n_bins_narrow, gaussian(n_bins_narrow, *popt), '--', color = "magenta", label = f"Gaussian fit: mean {popt[1]:.2f}, std {popt[2]:.2f}")
+            except:
+                popt = [0, 0, 0]
        
         
         
@@ -4218,6 +4178,8 @@ class BeamAnalysis:
         ax.set_ylabel("Number of spills", fontsize = 20)
         ax.legend(fontsize = 14)
         ax.grid()
+
+        ax.set_xlim(-2, max_limit+2)
         ax.set_title(f"Run {self.run_number} ({self.run_momentum} MeV/c)", fontsize = 20)
         self.pdf_global.savefig(fig)
 
