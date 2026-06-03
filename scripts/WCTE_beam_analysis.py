@@ -47,6 +47,11 @@ def parse_args():
         help=f"Enable minimum biais mode: downstream ACTs do not have the same refractive index"
     )
 
+    parser.add_argument(
+        "--is_kaon_run", action="store_true",
+        help="Treat identified muons as kaons (uses kaon dEdx tables for momentum estimation, records flag in run_info)"
+    )
+
     return parser.parse_args()
 
 
@@ -88,7 +93,7 @@ for input_file in args.input_files:
     print(f"\n{'#'*60}\n  {os.path.basename(input_file)}\n{'#'*60}")
 
     #Set up a beam analysis class
-    ana = BeamAnalysis(run_number, run_momentum, n_eveto_group, n_tagger_group, there_is_ACT5, args.output_dir, pdf_name, is_beam_paper_analysis = False)
+    ana = BeamAnalysis(run_number, run_momentum, n_eveto_group, n_tagger_group, there_is_ACT5, args.output_dir, pdf_name, is_beam_paper_analysis=False, is_kaon_run=args.is_kaon_run)
 
     #Store into memory the number of events desired,
     # set require_t5 to False if you do not require that the particle reaches T5
