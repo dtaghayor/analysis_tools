@@ -320,13 +320,29 @@ class BeamAnalysis:
         self.momentum_slit_negative = -999
         self.momentum_slit_positive = -999
 
+        self.acceptance_slit_negative = -999
+        self.acceptance_slit_positive = -999
+
 
         df_jaw_filtered = df_jaw[df_jaw["run"] == run_number]
         if  not df_jaw_filtered.empty:
-            self.jaw_setting = f"[{df_jaw_filtered['T09.XCHV026:POS_JAW1_REF'].iloc[0]} - {df_jaw_filtered['T09.XCHV026:POS_JAW2_REF'].iloc[0]}]"
-        
+            
+
             self.momentum_slit_negative = df_jaw_filtered['T09.XCHV026:POS_JAW1_REF'].iloc[0]
             self.momentum_slit_positive = df_jaw_filtered['T09.XCHV026:POS_JAW2_REF'].iloc[0]
+
+            self.acceptance_slit_negative = df_jaw_filtered['T09.XCHV011:POS_JAW1_REF'].iloc[0]
+            self.acceptance_slit_positive = df_jaw_filtered['T09.XCHV011:POS_JAW2_REF'].iloc[0]
+
+            if abs(self.momentum_slit_negative) == abs(self.momentum_slit_positive):
+                self.jaw_setting = r"Collimator slit: $\pm$"f"{self.momentum_slit_positive} mm"
+            else:
+                self.jaw_setting = f"Collimator slit: [{df_jaw_filtered['T09.XCHV026:POS_JAW1_REF'].iloc[0]} - {df_jaw_filtered['T09.XCHV026:POS_JAW2_REF'].iloc[0]}]"
+            if abs(self.acceptance_slit_negative) == abs(self.acceptance_slit_positive):
+                self.jaw_setting += r", Acceptance slit: $\pm$"f"{self.acceptance_slit_positive} mm"
+            else:
+                self.jaw_setting += f", Acceptance slit: [{df_jaw_filtered['T09.XCHV011:POS_JAW1_REF'].iloc[0]} - {df_jaw_filtered['T09.XCHV011:POS_JAW2_REF'].iloc[0]}]"
+
 
         print(f"Run {self.run_number} has jaw setting {self.jaw_setting} ")
         
@@ -3046,7 +3062,7 @@ class BeamAnalysis:
                 ax.set_xlim(theoretical_t0t4_tof_cut-2, theoretical_t0t4_tof_cut+6)
 
                 ax.grid()
-            fig.suptitle(f"Run {self.run_number} ({self.run_momentum} MeV/c) - {lbl['mu']} and Pion TOF \n (Collimator jaw setting: {self.jaw_setting})", fontsize = 20)
+            fig.suptitle(f"Run {self.run_number} ({self.run_momentum} MeV/c) - {lbl['mu']} and Pion TOF \n  {self.jaw_setting}", fontsize = 20)
             self.pdf_global.savefig(fig)
             plt.close()
                 
@@ -3196,7 +3212,7 @@ class BeamAnalysis:
         ax.grid()
         ax.set_yscale("log")
         ax.set_ylim(0.5, 5e5)
-        ax.set_title(f"Run {self.run_number} T0-T1 TOF ({self.run_momentum} MeV/c) \n (Collimator jaw setting: {self.jaw_setting})", fontsize = 20)
+        ax.set_title(f"Run {self.run_number} T0-T1 TOF ({self.run_momentum} MeV/c) \n{self.jaw_setting}", fontsize = 20)
         self.pdf_global.savefig(fig)
         
         
@@ -3277,7 +3293,7 @@ class BeamAnalysis:
         ax.grid()
         ax.set_yscale("log")
         ax.set_ylim(0.5, 5e5)
-        ax.set_title(f"Run {self.run_number} T0-T4 TOF ({self.run_momentum} MeV/c)\n (Collimator jaw setting: {self.jaw_setting})", fontsize = 20)
+        ax.set_title(f"Run {self.run_number} T0-T4 TOF ({self.run_momentum} MeV/c)\n{self.jaw_setting}", fontsize = 20)
         self.pdf_global.savefig(fig)
         
         
@@ -3845,6 +3861,8 @@ class BeamAnalysis:
                 "there_is_ACT5":np.array([self.there_is_ACT5], dtype = np.int32),
                 "collimator_jaw_pos1": np.array([self.momentum_slit_negative], dtype=np.float64),
                 "collimator_jaw_pos2": np.array([self.momentum_slit_positive], dtype=np.float64),
+                "acceptance_jaw_pos1": np.array([self.acceptance_slit_negative], dtype=np.float64),
+                "acceptance_jaw_pos2": np.array([self.acceptance_slit_positive], dtype=np.float64),
                 "is_kaon_run": np.array([int(self.is_kaon_run)], dtype=np.int32),
 
             }
@@ -4196,10 +4214,8 @@ class BeamAnalysis:
             df_pot = pd.read_csv(f"/eos/experiment/wcte/user_data/fiorenti/nxcals/pot/brb_run_{self.run_number}_pot.csv")
             #the first column is the time stamp, the second is the number of POT for that spill 
             df_pot = df_pot.rename(columns={df_pot.columns[0]: "timestamp", df_pot.columns[1]: "POT"})
-            print(df_pot)
             n_pot_per_trigger = np.array(df_pot["POT"])
             n_pot_per_trigger = n_pot_per_trigger[0:len(spill_index)]
-            print(df_pot)
         except:
             return 0
 
