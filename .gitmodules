@@ -1,3 +1,9 @@
 [submodule "extern/T5_analysis"]
 	path = extern/T5_analysis
 	url = git@github.com:WCTE/T5_analysis.git
+[submodule "extern/Geometry"]
+	path = extern/Geometry
+	url = git@github.com:WCTE/Geometry.git
+[submodule "extern/TimeCal"]
+	path = extern/TimeCal
+	url = git@github.com:WCTE/TimeCal.git

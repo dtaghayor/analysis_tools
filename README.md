@@ -1,3 +1,23 @@
+This repository contains some common WCTE analysis tools as a python package, the tools for processing the data are stored here as well as tools for analysing processed data. If you follow the installation instructions you can use these tools running import analysis_tools.
+
+Examples for using some of these tools can be found in the analysis_examples directory and are also listed https://wcte.hyperk.ca/wg/simulation-and-analysis/data-analysis-1 .
+
+The scripts used in the WCTE data production are included in the scripts repository. 
+
+The layout of this repository is as follows:
+
+```
+analysis_tools/
+├── analysis_examples/ #contains examples on using the analysis tools
+├── analysis_tools/ #contains the python package for analysis - can be installed using instructions below
+├── cpp_merger/ #contains the cpp merging code for the data production
+├── scripts/ #contains the python scripts for running the production
+├── data/ #contains data needed for the package functions
+├── extern/ #contains external packages linked to this repository as submodules
+├── include/ #contains data used by the beam analysis scripts 
+├── notebooks/ #contains older example notebooks (from August 2025 workshop)
+```
+
 # Installation
 Installation:
 
@@ -8,10 +28,15 @@ pip install -e .
 ```
 
 The `-e` flag allows you to edit the package 
-
 If using on lxplus you will need to setup this in a python virtual environment 
 
-## Contribution Rules
+Some of the analysis examples use external packages linked to this repository as submodules. To install the external packages run:
+```
+git submodule update --init --recursive
+```
+Since some of the modules are private you need to set up ssh access to github for this to work - see https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account . Note you can check your ssh is working by running ssh -T git@github.com. 
+
+# Contribution Rules
 Main branch on WCTE/analysis_tools is protected - please open a pull request (either from your own branch or fork) to push changes to main branch
 
 # Package classes and functions
@@ -50,8 +75,7 @@ to be in the current working directory - more details in the database interface 
 
 ## PMTMapping 
 
-PMTMapping is a class containing the mapping of the WCTE PMTs slot and position ids to the
-electronics channel and mPMT card ids and vice versa
+PMTMapping is a class containing the mapping of the WCTE PMTs slot and position ids (position in the detector) to the channel and mPMT card ids (electronics numbering) and vice versa. This is generally not needed as processed data already has the mPMTs mapped to their position and slot numbers. 
 Usage:
 ```
 mapping = PMTMapping()
@@ -70,7 +94,7 @@ The mapping json is located in the package
 
 Class to load PMT positions, directions and calculate time of flight.
 
-# Processing Scripts
+# Data Production Scripts
 
 ## production v_0
 ### add_timing_constants.py
@@ -99,8 +123,7 @@ The recommended entry point for production. For a given run it:
 1. Reads trigger type and beam analysis mode from the run info JSON via `get_run_info()`.
 2. Runs the appropriate trigger-specific pipeline (`run_hw_trigger_pipeline.py` or `run_self_trigger_pipeline.py`).
 3. Conditionally runs beam monitor PID analysis (`WCTE_beam_analysis.py`) depending on the beam configuration.
-
-The input files are not passed directly — they are resolved from the run number.
+4. Runs the T5 beam monitor analysis 
 
 Usage:
 ```bash
@@ -201,29 +224,6 @@ applies trigger-level flags for missing waveforms, missing trigger signals, and 
     beam_analysis_output_R<run_number>.root
 ```
 
-### Status sidecar files
-
-Each DQ script writes a `_status.json` file alongside the output ROOT file containing QC metrics:
-
-```json
-{
-  "status": "ok",
-  "metrics": {
-    "n_good_pmt_channels": 1562,
-    "n_triggers": 50000,
-    "n_bad_triggers": 724,
-    "bad_trig_pct": 1.45,
-    "n_hits": 3733472,
-    "n_bad_hits": 5432,
-    "bad_hit_pct": 0.15
-  },
-  "warnings": [],
-  "errors": []
-}
-```
-
-The pipeline runners read these sidecars after the DQ step and print a `QC WARNING` if configurable
-thresholds (defined at the top of each pipeline runner) are exceeded.
 
 ### Shared utilities
 
@@ -234,8 +234,6 @@ Common functions used across all production scripts are in `analysis_tools/produ
 - `get_run_database_data`, `get_stable_mpmt_list_slow_control` — slow-control data access
 - `get_slow_control_trigger_mask`, `get_67ms_mask` — trigger-level DQ masks
 - `slot_pos_from_card_chan_list` — PMT channel mapping
-- `write_status_json`, `read_status_json` — status sidecar I/O
-
 
 
 # Beam monitor PID

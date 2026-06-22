@@ -45,6 +45,14 @@ class Cut:
     @staticmethod
     def between(low, high):
         return lambda x: (x > low) & (x < high)
+    
+    @staticmethod
+    def equal_to(value):
+        return lambda x: x == value
+    
+    @staticmethod
+    def not_equal_to(value):
+        return lambda x: x != value
 
     @staticmethod
     def true():
@@ -140,92 +148,47 @@ class BeamSelection:
     # ------------------------------------------------------------------
 
     @classmethod
-    def electron(cls, *cuts):
+    def selection(cls, name, *cuts):
         """
-        Electrons: fast particles above threshold in the upstream ACT (act_eveto).
+        Custom selection: to be named by the user and defined by arbitrary cuts.
         Pass all cuts as [variable, operator, value] triplets.
+        ---------------------------------------------------------------------------
+        Electrons: fast particles above threshold in the upstream ACT (act_eveto).
 
         Typical cuts
         ------------
         ["act_eveto", ">", act_eveto_cut]
         ["tof",       "<", proton_tof_cut]   # omit if TOF info is unavailable
-        """
-        sel = cls("electron")
-        for spec in cuts:
-            sel.add(_parse_cut_spec(spec))
-        return sel
-
-    @classmethod
-    def muon(cls, *cuts):
-        """
-        Muons: fast particles, below threshold in the upstream ACT (act_eveto)
+        ---------------------------------------------------------------------------
+        Muons (or muons at higher momenta in kaon runs): fast particles, below threshold in the upstream ACT (act_eveto)
         and above threshold in the downstream ACT (act_tagger).
-        Pass all cuts as [variable, operator, value] triplets.
-
+        
         Typical cuts
         ------------
         ["act_eveto",    "<", act_eveto_cut]
         ["act_tagger",   ">", act_tagger_cut]
         ["tof",          "<", proton_tof_cut]   # omit if TOF info is unavailable
         ["mu_tag_total", ">", mu_tag_cut]        # optional extra cut
-        """
-        sel = cls("muon")
-        for spec in cuts:
-            sel.add(_parse_cut_spec(spec))
-        return sel
-
-    @classmethod
-    def kaon(cls, *cuts):
-        """
-        Kaons: fast particles, below threshold in the upstream ACT (act_eveto)
-        and above threshold in the downstream ACT (act_tagger).
-        Pass all cuts as [variable, operator, value] triplets.
-
-        Typical cuts
-        ------------
-        ["act_eveto",  "<", act_eveto_cut]
-        ["act_tagger", ">", act_tagger_cut]
-        ["tof",        "<", proton_tof_cut]   # omit if TOF info is unavailable
-        """
-        sel = cls("kaon")
-        for spec in cuts:
-            sel.add(_parse_cut_spec(spec))
-        return sel
-
-    @classmethod
-    def pion(cls, *cuts):
-        """
-        Pions: fast particles below threshold in both ACTs.
-        Pass all cuts as [variable, operator, value] triplets.
-
+        ---------------------------------------------------------------------------
+        Pions: fast particles below threshold in both ACTs. 
         Typical cuts
         ------------
         ["act_eveto",  "<", act_eveto_cut]
         ["act_tagger", "<", act_tagger_cut]
         ["tof",        "<", proton_tof_cut]   # omit if TOF info is unavailable
-        """
-        sel = cls("pion")
-        for spec in cuts:
-            sel.add(_parse_cut_spec(spec))
-        return sel
-
-    @classmethod
-    def proton(cls, *cuts):
-        """
-        Protons: slow particles identified by their TOF falling in a window above
-        the fast/slow separation value.
-        Pass all cuts as [variable, operator, value] triplets.
-
+        ---------------------------------------------------------------------------
+        protons: slow particles identified by their TOF falling in a window above the fast/slow separation value.
         Typical cuts
         ------------
         ["tof", "between", [proton_tof_cut, proton_tof_cut + window]]
+
         """
-        sel = cls("proton")
+        sel = cls(name)
         for spec in cuts:
             sel.add(_parse_cut_spec(spec))
         return sel
 
-
+    
 
 def _parse_cut_spec(spec):
     """
@@ -254,6 +217,10 @@ def _parse_cut_spec(spec):
         func, direction = Cut.greater_than(value), "above"
     elif op == "<":
         func, direction = Cut.less_than(value), "below"
+    elif op == "==":
+        func, direction = Cut.equal_to(value), "equal"
+    elif op == "!=":
+        func, direction = Cut.not_equal_to(value), "not_equal"
     elif op == ">=":
         func, direction = (lambda v: lambda x: x >= v)(value), "above"
     elif op == "<=":
@@ -275,6 +242,7 @@ _VARIABLE_ALIASES = {
     "tof":          "vme_tof_corr",
     "mu_tag_total": "vme_mu_tag_total",
     "act_0_charge": "vme_act0_l_charge",
+    "T5_particle_nr": "T5_particle_nr",
 
 }
 
@@ -328,7 +296,8 @@ _VARIABLE_UNITS = {
     'vme_tof_t0t5': "ns",
     'vme_tof_t1t5': "ns",
     'vme_mu_tag_l_charge': "a.u.",
-    'vme_mu_tag_r_charge': "a.u."
+    'vme_mu_tag_r_charge': "a.u.",
+    'T5_particle_nr': " ",
 }
 
 

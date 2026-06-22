@@ -288,11 +288,12 @@ def fit_three_gaussians(entries, bin_centers):
 
 
 class BeamAnalysis:
-    def __init__(self, run_number, run_momentum, n_eveto, n_tagger, there_is_ACT5, output_dir = None, pdf_name=None, is_beam_paper_analysis = False):
+    def __init__(self, run_number, run_momentum, n_eveto, n_tagger, there_is_ACT5, output_dir = None, pdf_name=None, is_beam_paper_analysis = False, is_kaon_run = False):
         #Store the run characteristics
         self.run_number, self.run_momentum = run_number, run_momentum
         self.n_eveto, self.n_tagger = n_eveto, n_tagger
         self.there_is_ACT5 = there_is_ACT5
+        self.is_kaon_run = is_kaon_run
         self.output_dir = output_dir
         
         if pdf_name is None:
@@ -319,13 +320,29 @@ class BeamAnalysis:
         self.momentum_slit_negative = -999
         self.momentum_slit_positive = -999
 
+        self.acceptance_slit_negative = -999
+        self.acceptance_slit_positive = -999
+
 
         df_jaw_filtered = df_jaw[df_jaw["run"] == run_number]
         if  not df_jaw_filtered.empty:
-            self.jaw_setting = f"[{df_jaw_filtered['T09.XCHV026:POS_JAW1_REF'].iloc[0]} - {df_jaw_filtered['T09.XCHV026:POS_JAW2_REF'].iloc[0]}]"
-        
+            
+
             self.momentum_slit_negative = df_jaw_filtered['T09.XCHV026:POS_JAW1_REF'].iloc[0]
             self.momentum_slit_positive = df_jaw_filtered['T09.XCHV026:POS_JAW2_REF'].iloc[0]
+
+            self.acceptance_slit_negative = df_jaw_filtered['T09.XCHV011:POS_JAW1_REF'].iloc[0]
+            self.acceptance_slit_positive = df_jaw_filtered['T09.XCHV011:POS_JAW2_REF'].iloc[0]
+
+            if abs(self.momentum_slit_negative) == abs(self.momentum_slit_positive):
+                self.jaw_setting = r"Collimator slit: $\pm$"f"{self.momentum_slit_positive} mm"
+            else:
+                self.jaw_setting = f"Collimator slit: [{df_jaw_filtered['T09.XCHV026:POS_JAW1_REF'].iloc[0]} - {df_jaw_filtered['T09.XCHV026:POS_JAW2_REF'].iloc[0]}]"
+            if abs(self.acceptance_slit_negative) == abs(self.acceptance_slit_positive):
+                self.jaw_setting += r", Acceptance slit: $\pm$"f"{self.acceptance_slit_positive} mm"
+            else:
+                self.jaw_setting += f", Acceptance slit: [{df_jaw_filtered['T09.XCHV011:POS_JAW1_REF'].iloc[0]} - {df_jaw_filtered['T09.XCHV011:POS_JAW2_REF'].iloc[0]}]"
+
 
         print(f"Run {self.run_number} has jaw setting {self.jaw_setting} ")
         
@@ -333,6 +350,25 @@ class BeamAnalysis:
         
         
         
+    @property
+    def _plabels(self):
+        """Particle label strings adjusted for beam polarity and kaon-run flag."""
+        pos = self.run_momentum > 0
+        return {
+            "e":    "Positron"         if pos else "Electron",
+            "es":   "Positrons"        if pos else "Electrons",
+            "mu":   "Kaon"             if self.is_kaon_run else "Muon",
+            "mus":  "Kaons"            if self.is_kaon_run else "Muons",
+            "pi":   "Pion",
+            "pis":  "Pions",
+            "p":    "Proton"           if pos else "Antiproton",
+            "ps":   "Protons"          if pos else "Antiprotons",
+            "D":    "Deuteron",
+            "Ds":   "Deuterons",
+            "He3":  "Helium-3",
+            "He3s": "Helium-3 nuclei",
+        }
+
     def end_analysis(self):
         self.pdf_global.close()
         
@@ -402,8 +438,14 @@ class BeamAnalysis:
         _, _, proton_tof_cut_array, _, _ =self.give_theoretical_TOF("Protons", np.array([abs(self.run_momentum) * factor])) #the smallest TOF value for a proton, considered to be the TOF at 110% of the theoretical proton momentum
         _, _, deuteron_tof_cut_array, _, _ =self.give_theoretical_TOF("Deuteron", np.array([abs(self.run_momentum) * factor])) #the smallest TOF value for a deuteron, considered to be the TOF at 110% of the theoretical proton momentum
 
+
+
         #Implement a TOF cut based on theoretical values for Helium3 as well
         _, _, helium3_tof_cut_array, _, _ =self.give_theoretical_TOF("Helium3", np.array([abs(self.run_momentum) * 2 * factor])) #the smallest TOF value for a helium3, considered to be the TOF at 110% of the theoretical helium3 momentum which is twice the beamline momentum since the helium3 has twice the charge
+
+        
+
+
 
 
         electron_tof_offset = 2*0.626 #ns
@@ -411,9 +453,17 @@ class BeamAnalysis:
         self.proton_tof_cut = proton_tof_cut_array[0] - electron_tof_offset
         self.deuteron_tof_cut = deuteron_tof_cut_array[0] - electron_tof_offset
         self.helium3_tof_cut = helium3_tof_cut_array[0] - electron_tof_offset
+
+        if np.isnan(self.proton_tof_cut):
+            self.proton_tof_cut = 9999 #default value in case the theoretical TOF cannot be calculated, this will ensure that no protons are identified
+        if np.isnan(self.deuteron_tof_cut):
+            self.deuteron_tof_cut = 9999 #default value in case the theoretical TOF cannot be calculated, this will ensure that no deuterons are identified
+        if np.isnan(self.helium3_tof_cut):
+            self.helium3_tof_cut = 9999 #default value in case the theoretical TOF cannot be calculated, this will ensure that no helium3 are identified
+
         
         
-        print(f"At {self.run_momentum} MeV/c, the T0-T1 TOF limit used to identify protons is {self.proton_tof_cut:.2f}ns, and the limits to ID deuterons is {self.deuteron_tof_cut:.2f}ns.")
+        print(f"At {self.run_momentum} MeV/c, the T0-T1 TOF limit used to identify protons is {self.proton_tof_cut:.2f}ns, and  to ID deuterons is {self.deuteron_tof_cut:.2f}ns.")
         print(f"At {self.run_momentum} MeV/c, the T0-T1 TOF limit used to identify helium3 is {self.helium3_tof_cut:.2f}ns.")
         
         nEvents = len(data["beamline_pmt_qdc_ids"])
@@ -675,11 +725,12 @@ class BeamAnalysis:
                 #checking if we have a second hit in the T5
                 w0 = corrected_second_hit[ch0]
                 w1 = corrected_second_hit[ch1]
-
-                if not np.isnan(v0) and not np.isnan(v1):
+                #implementing a 10ns coincidence between the two PMTs on the same bar
+                if not np.isnan(v0) and not np.isnan(v1) and abs(v0-v1) < 10:
                     t5_bar_means.append(0.5 * (v0 + v1))
-                if not np.isnan(w0) and not np.isnan(w1):
-                    t5_bar_means.append(0.5 * w0 + w1)
+
+                if not np.isnan(w0) and not np.isnan(w1) and abs(w0-w1) < 10:
+                    t5_bar_means.append(0.5 * (w0 + w1))
                  
             #in case there is no pairs of t5 hits 
             event_q_t5_missing_tdc = (len(t5_bar_means) == 0)
@@ -1233,7 +1284,9 @@ class BeamAnalysis:
         print(f"A total of {n_electrons-n_electrons_initial} additional electrons are tagged with ACT35, on top of the {n_electrons_initial} that were tagged with ACT02")
         
         
-    def plot_ACT35_left_vs_right(self, cut_line = None, cut_line_label = "pion/muon"):
+    def plot_ACT35_left_vs_right(self, cut_line = None, cut_line_label = None):
+        if cut_line_label is None:
+            cut_line_label = "pion/kaon" if self.is_kaon_run else "pion/muon"
         bins = np.linspace(0, 70, 100)
         fig, ax = plt.subplots(figsize = (8, 6))
         act_tagger_l = self.df["act3_l"]+self.df["act4_l"]+self.df["act5_l"] * int(self.there_is_ACT5)
@@ -1357,20 +1410,18 @@ class BeamAnalysis:
         
         if abs(self.run_momentum) < 250:
             self.df["is_proton"] = False
-            self.df["is_deuteron"] = False
             
         else:
-             self.df["is_proton"] = np.where(self.df["tof"]>self.proton_tof_cut, self.df["tof"]<self.helium3_tof_cut, False)      
-             self.df["is_deuteron"] = (self.df["tof"]>=self.deuteron_tof_cut)
-             
-            
-            
+            self.df["is_proton"] = np.where(self.df["tof"]>self.proton_tof_cut, self.df["tof"]<self.helium3_tof_cut, False)      
+                
         
-        if abs(self.run_momentum) < 350:
+        if self.run_momentum < 350:
             self.df["is_helium3"] = False
+            self.df["is_deuteron"] = False
 
         else:
             self.df["is_helium3"] = np.where(self.df["tof"]>self.helium3_tof_cut, self.df["tof"]<self.deuteron_tof_cut, False)
+            self.df["is_deuteron"] = (self.df["tof"]>=self.deuteron_tof_cut)
                 
                 
         n_protons = sum(self.df["is_proton"]==True)
@@ -1394,7 +1445,9 @@ class BeamAnalysis:
         
     def tag_muons_pions_ACT35(self):
         '''Function to identify the muons and pions based on the charge deposited in ACT35, potentially using the muon tagger'''
-        
+
+        lbl = self._plabels
+
         #step 1: find the optimal cut line in the muon tagger and decide if it is useful to implement it (that is, in case there are still some non-electrons left after the cut
         bins = np.linspace(120, 800, 100)
            
@@ -1431,7 +1484,7 @@ class BeamAnalysis:
         ax.hist(mu_tag_tot, bins = bins, label = 'All particles', histtype = "step")
         ax.hist(mu_tag_tot[self.df["is_electron"]], bins = bins, label = 'Electrons', histtype = "step")
         ax.hist(mu_tag_tot[self.df["is_proton"]], bins = bins, label = 'Protons', histtype = "step")
-        h, _, _ = ax.hist(mu_tag_tot[muons_pions], bins = bins, label = 'Muons and pions', histtype = "step")
+        h, _, _ = ax.hist(mu_tag_tot[muons_pions], bins = bins, label = f'{lbl["mus"]} and pions', histtype = "step")
         ax.set_xlabel(f"Total charge in muon-tagger (QDC)", fontsize = 18)
         ax.set_ylabel("Number of events", fontsize = 18)
         ax.set_title(f"Run {self.run_number} ({self.run_momentum} MeV/c) - Muon Tagger charge", fontsize = 20)
@@ -1456,7 +1509,7 @@ class BeamAnalysis:
         n_muons_pions_above_cut = np.sum(muons_pions[mu_tag_tot>mu_tag_cut])
         self.n_muons_pions = np.sum(muons_pions)
 
-        ax.axvline(mu_tag_cut, color = "k", linestyle = "--", label = f"Muon tagger cut: {mu_tag_cut:.1f} QDC \n {n_muons_pions_above_cut/self.n_muons_pions * 100:.1f}% of all muons and pions are above cut")
+        ax.axvline(mu_tag_cut, color = "k", linestyle = "--", label = f"Muon tagger cut: {mu_tag_cut:.1f} QDC \n {n_muons_pions_above_cut/self.n_muons_pions * 100:.1f}% of all {lbl['mus'].lower()} and pions are above cut")
         ax.legend(fontsize = 16)
 
         ax.set_yscale("log")
@@ -1483,8 +1536,8 @@ class BeamAnalysis:
             electron_above_mu_tag = (mu_tag_tot>mu_tag_cut) & (self.df["is_electron"])
             muons_pions_above_mu_tag = (mu_tag_tot>mu_tag_cut) & (muons_pions)
             
-            h, _, _ = ax.hist(self.df["act_tagger"][muons_pions_above_mu_tag], bins = bins, label = "Muons/pions passing muon tagger cut", histtype = "step")
-            ax.hist(self.df["act_tagger"][muons_pions], bins = bins, label = "All muons/pions", histtype = "step")
+            h, _, _ = ax.hist(self.df["act_tagger"][muons_pions_above_mu_tag], bins = bins, label = f"{lbl['mus']}/pions passing muon tagger cut", histtype = "step")
+            ax.hist(self.df["act_tagger"][muons_pions], bins = bins, label = f"All {lbl['mus'].lower()}/pions", histtype = "step")
             
             
             ax.hist(self.df["act_tagger"][electron_above_mu_tag], 
@@ -1501,7 +1554,7 @@ class BeamAnalysis:
             index = np.where(mask)[-1]
             self.act35_cut_pi_mu = bin_centers[index[min_index]]
 
-            ax.axvline(self.act35_cut_pi_mu, label = f"pion/muon cut line: ACT3-5 = {self.act35_cut_pi_mu:.1f} PE", color = "k", linestyle = "--")
+            ax.axvline(self.act35_cut_pi_mu, label = f"pion/{lbl['mu'].lower()} cut line: ACT3-5 = {self.act35_cut_pi_mu:.1f} PE", color = "k", linestyle = "--")
             ax.legend(fontsize = 12)
             ax.set_ylabel("Number of events", fontsize = 18)
             ax.set_xlabel("ACT3-5 total charge (PE)", fontsize = 18)
@@ -1525,8 +1578,8 @@ class BeamAnalysis:
             mask_both = mask_muons_pions & mask_pass_mu_tag
 
 
-            h, _, _ = ax.hist(self.df["act_tagger"][mask_both],  histtype = "step", bins = bins, label = f"All Muon or pions above mu_tag cut ({sum(mask_both)}) events")
-            h_all, _, _ = ax.hist(self.df["act_tagger"][mask_muons_pions],  histtype = "step", bins = bins, label = f"All Muon or pions: ({sum(mask_muons_pions)}) events")
+            h, _, _ = ax.hist(self.df["act_tagger"][mask_both],  histtype = "step", bins = bins, label = f"All {lbl['mu']} or pions above mu_tag cut ({sum(mask_both)}) events")
+            h_all, _, _ = ax.hist(self.df["act_tagger"][mask_muons_pions],  histtype = "step", bins = bins, label = f"All {lbl['mu']} or pions: ({sum(mask_muons_pions)}) events")
             
 
             #Weight up the events passing the muon tagger cut so the maximas align (the muon peak)
@@ -1547,7 +1600,7 @@ class BeamAnalysis:
             
                   
             # plot the scaled histogram 
-            ax.step(bin_centers, h_muon_scaled, where='mid', label=f"Mu/pi above cut scaled to muon peak ({sum(h_muon_scaled):.1f}) events")
+            ax.step(bin_centers, h_muon_scaled, where='mid', label=f"Mu/pi above cut scaled to {lbl['mu'].lower()} peak ({sum(h_muon_scaled):.1f}) events")
             
             ### look at electrons
             n_electrons = sum(self.df["is_electron"])
@@ -1566,7 +1619,7 @@ class BeamAnalysis:
             
             h_all_minus_h_scaled_electron = np.where(bin_centers>=bin_centers[idx_muon_peak], h_all_minus_h_scaled, 0)
             
-            ax.step(bin_centers, h_all_minus_h_scaled_pion,  where = 'mid', label = f"Pion-like distribution")
+            ax.step(bin_centers, h_all_minus_h_scaled_pion,  where = 'mid', label = f"{lbl['pi']}-like distribution")
 
             
             h_pion = h_all_minus_h_scaled_pion
@@ -1587,9 +1640,9 @@ class BeamAnalysis:
             #################### Once we have the distribution, remove the pion contamination 
             fig, ax = plt.subplots(figsize = (8, 6))
             
-            ax.step(bin_centers, h_muon_scaled, where='mid', color = "black", label=f"Mu/pi above cut scaled to muon peak", linewidth = 4)
+            ax.step(bin_centers, h_muon_scaled, where='mid', color = "black", label=f"Mu/pi above cut scaled to {lbl['mu'].lower()} peak", linewidth = 4)
             
-            ax.step(bin_centers, h_pion, where = 'mid', color = "magenta", label = f"Pion-like distribution")
+            ax.step(bin_centers, h_pion, where = 'mid', color = "magenta", label = f"{lbl['pi']}-like distribution")
             
             
             
@@ -1601,7 +1654,7 @@ class BeamAnalysis:
             h_muon = h_muon_scaled - h_pion_scaled
             h_muon = h_muon.clip(0)
             
-            ax.step(bin_centers, h_muon, where='mid', label=f"Mu/pi above mutag cut bin 0 minus scaled pion distr. => muon population")
+            ax.step(bin_centers, h_muon, where='mid', label=f"Mu/pi above mutag cut bin 0 minus scaled pion distr. => {lbl['mu'].lower()} population")
             
             
             ax.set_yscale("log")
@@ -1623,7 +1676,7 @@ class BeamAnalysis:
             fig, ax = plt.subplots(figsize = (8, 6))
             
             ax.step(bin_centers, h_pion_tot, where='mid', color = "magenta", label=f"Total number of pions")
-            ax.step(bin_centers, h_muon_tot, where='mid', color = "green", label=f"Total number of muons")
+            ax.step(bin_centers, h_muon_tot, where='mid', color = "green", label=f"Total number of {lbl['mus'].lower()}")
             
             ax.set_yscale("log")
             ax.set_xlabel("ACT35 charge (PE)")
@@ -1643,10 +1696,10 @@ class BeamAnalysis:
             
             fig, ax = plt.subplots(figsize = (8, 6))
             ax.step(bin_centers, n_pions_left, where='mid', color = "magenta", label=f"Number of pions on the left of the cut line")
-            ax.step(bin_centers, n_muons_left, where='mid', color = "green", label=f"Number of muons on the left of the cut line")
-            
+            ax.step(bin_centers, n_muons_left, where='mid', color = "green", label=f"Number of {lbl['mus'].lower()} on the left of the cut line")
+
             ax.step(bin_centers, n_pions_right, where='mid', linestyle = "--", color = "magenta", label=f"Number of pions on the right of the cut line")
-            ax.step(bin_centers, n_muons_right, where='mid', linestyle = "--", color = "green", label=f"Number of muons on the right of the cut line")
+            ax.step(bin_centers, n_muons_right, where='mid', linestyle = "--", color = "green", label=f"Number of {lbl['mus'].lower()} on the right of the cut line")
             
             ax.set_yscale("log")
             ax.set_xlabel("ACT35 charge (PE)", fontsize = 12)
@@ -1683,7 +1736,7 @@ class BeamAnalysis:
             ax.set_yscale("log")
             ax.set_ylim(0.5, None)
             
-            ax.set_xlabel("Pion selection efficiency", fontsize = 12)
+            ax.set_xlabel(f"{lbl['pi']} selection efficiency", fontsize = 12)
             ax.set_ylabel("# mu rejected per mu in sample", fontsize = 12)
             ax.grid()
             
@@ -1695,7 +1748,7 @@ class BeamAnalysis:
             
             ax.set_yscale("log")
             ax.set_ylim(0.5, None)
-            ax.set_xlabel("Muon selection efficiency", fontsize = 12)
+            ax.set_xlabel(f"{lbl['mu']} selection efficiency", fontsize = 12)
             ax.set_ylabel("# pi rejected per pi in sample", fontsize = 12)
             ax.grid()
             
@@ -1712,20 +1765,20 @@ class BeamAnalysis:
             ax.legend()
             ax.grid()
             
-            ax.set_title(f"Run {self.run_number} ({self.run_momentum} MeV/c) - Pions", fontsize = 20)
+            ax.set_title(f"Run {self.run_number} ({self.run_momentum} MeV/c) - {lbl['pis']}", fontsize = 20)
             plt.close()
             
             fig, ax = plt.subplots(figsize = (8, 6))
-            ax.step(bin_centers, muon_purity, where='mid', color = "blue", label = "muon purity")
-            ax.step(bin_centers, muon_efficiency, where='mid', color = "red", label = "muon efficiency")
+            ax.step(bin_centers, muon_purity, where='mid', color = "blue", label = f"{lbl['mu'].lower()} purity")
+            ax.step(bin_centers, muon_efficiency, where='mid', color = "red", label = f"{lbl['mu'].lower()} efficiency")
             ax.grid()
-            
+
             ax.set_xlabel("Cut line in ACT35 (PE)", fontsize = 12)
             ax.set_ylabel("")
             ax.legend()
             ax.grid()
-            
-            ax.set_title(f"Run {self.run_number} ({self.run_momentum} MeV/c) - Muons", fontsize = 20)
+
+            ax.set_title(f"Run {self.run_number} ({self.run_momentum} MeV/c) - {lbl['mus']}", fontsize = 20)
             plt.close()
             
             
@@ -1745,13 +1798,13 @@ class BeamAnalysis:
             fig, ax = plt.subplots(figsize = (8, 6))
 
             
-            h, _, _ = ax.hist(self.df["act_tagger"][muons_pions], bins = bins, label = "Muons and pions", histtype = "step")
+            h, _, _ = ax.hist(self.df["act_tagger"][muons_pions], bins = bins, label = f"{lbl['mus']} and pions", histtype = "step")
             
 #             print(sum(muons_pions))
             
             
-            ax.hist(self.df["act_tagger"][self.df["is_electron"]], 
-                    bins = bins, label = "Electrons", histtype = "step", color = "red")
+            ax.hist(self.df["act_tagger"][self.df["is_electron"]],
+                    bins = bins, label = lbl["es"], histtype = "step", color = "red")
 
             bin_centers = 0.5 * (bins[:-1] + bins[1:])
             x_min = 1.5
@@ -1769,7 +1822,7 @@ class BeamAnalysis:
             index = np.where(mask)[-1]
             self.act35_cut_pi_mu = bin_centers[index[min_index]]
 
-            ax.axvline(self.act35_cut_pi_mu, label = f"pion/muon cut line: ACT3-5 = {self.act35_cut_pi_mu:.1f} PE", color = "k", linestyle = "--")
+            ax.axvline(self.act35_cut_pi_mu, label = f"pion/{lbl['mu'].lower()} cut line: ACT3-5 = {self.act35_cut_pi_mu:.1f} PE", color = "k", linestyle = "--")
             ax.legend(fontsize = 12)
             ax.set_ylabel("Number of events", fontsize = 18)
             ax.set_xlabel("ACT3-5 total charge (PE)", fontsize = 18)
@@ -1983,6 +2036,7 @@ class BeamAnalysis:
         masses = {
             "Electrons": 0.511,
             "Muons": 105.658,
+            "Kaons": 493.677,
             "Pions": 139.57,
             "Protons": 938.272,
             "Deuteron": 1876.123,
@@ -2010,20 +2064,16 @@ class BeamAnalysis:
         masses = { #MeV/c
             "Electrons": 0.511,
             "Muons": 105.658,
+            "Kaons": 493.677,
             "Pions": 139.57,
             "Protons": 938.272,
             "Deuteron": 1876.123,
             "Helium3": 2808.392,
-            
+
         }
         
         
         factor = 1 #for all other particles we have the correct table, no need for a multiplicative factor
-    
-        if particle_name == "Helium3":
-            factor = 4 
-        
-        factor = factor #add 10% dEdx (increasing it)
 
         #we do not have the energy loss tables for helium3, lithium6 or tritium, we are extrapolating from those of Deuteron crudely accounting for the mass
         
@@ -2078,22 +2128,22 @@ class BeamAnalysis:
             if particle == "Electrons":
                 p_name = "electron"
             if particle == "Muons":
-                p_name = "muMinus"
+                p_name = "kaonMinus" if self.is_kaon_run else "muMinus"
             if particle == "Pions":
                 p_name = "piMinus"
             if particle == "Protons":
-                p_name = "proton"
+                p_name = "antiproton"
             if particle == "Deuteron":
                 p_name = "deuteron"
             if particle == "Helium3":
-                p_name = "proton" #
+                p_name = "He3" #
 
 
         elif self.run_momentum > 0:
             if particle == "Electrons":
                 p_name = "positron"
             if particle == "Muons":
-                p_name = "muPlus"
+                p_name = "kaonPlus" if self.is_kaon_run else "muPlus"
             if particle == "Pions":
                 p_name = "piPlus"
             if particle == "Protons":
@@ -2101,7 +2151,7 @@ class BeamAnalysis:
             if particle == "Deuteron":
                 p_name = "deuteron"
             if particle == "Helium3":
-                p_name = "proton" #
+                p_name = "He3" #
 
                 
         str_n_eveto = str(self.n_eveto)
@@ -2205,6 +2255,9 @@ class BeamAnalysis:
         #for each of the momenta we have a TOF
         total_tof = np.zeros(len(live_momentum))
 
+        # when is_kaon_run, the "Muons" selection actually contains kaons: use kaon mass for propagation
+        particle_for_propagation = "Kaons" if (self.is_kaon_run and particle == "Muons") else particle
+
         #now propagate that momentum through all the layers
         for l, layer_name in enumerate(array_layers_name):
             #We need to chose the number of steps per layer
@@ -2215,7 +2268,7 @@ class BeamAnalysis:
                 steps = 10
 
 
-            live_momentum, total_tof, total_length = self.return_losses(int(steps/2), array_layers_thickness[l]/2, particle, live_momentum, total_tof, total_length, reference_tables[array_layers_material[l]], verbose = False)
+            live_momentum, total_tof, total_length = self.return_losses(int(steps/2), array_layers_thickness[l]/2, particle_for_propagation, live_momentum, total_tof, total_length, reference_tables[array_layers_material[l]], verbose = False)
 
             #just starting crossing each of the scintillators we are saving the travel time so we can make the differences afterwards
             if layer_name == "T0_scintillator":
@@ -2230,8 +2283,8 @@ class BeamAnalysis:
             if layer_name == "T5_scintillator":
                 T5_time = total_tof.copy()
                 
-            live_momentum, total_tof, total_length = self.return_losses(int(steps/2), array_layers_thickness[l]/2, particle, live_momentum, total_tof, total_length, reference_tables[array_layers_material[l]], verbose = False)
-            
+            live_momentum, total_tof, total_length = self.return_losses(int(steps/2), array_layers_thickness[l]/2, particle_for_propagation, live_momentum, total_tof, total_length, reference_tables[array_layers_material[l]], verbose = False)
+
         #after we have gone through all of the materials, we output the initial guesses and each of the TOFs: T0-T1, T0-T4, T4-T1 (for now) Those are arrays corresponding to the theoretical tof for each of the initial momenta guesses
         #This will be useful to fix the T4 timing offset (maybe) we should see some jitter
         T0T1_theoretical_TOF = T1_time-T0_time
@@ -2310,6 +2363,14 @@ class BeamAnalysis:
         
     def extrapolate_momentum(self, initial_momentum, theoretical_tof, measured_tof, err_measured_tof, give_both_bounds = False):
         '''From the theoretical TOF and the measaured tof, extrapolate the value of the momentum with the associated error ''' 
+        #first ensure that we are only looking at the part of the curve that is not nan
+        initial_momentum = np.array(initial_momentum)
+        theoretical_tof = np.array(theoretical_tof)
+        mask = ~np.isnan(theoretical_tof)
+        initial_momentum = initial_momentum[mask]
+        theoretical_tof = theoretical_tof[mask]
+
+
         diff_m_exp = list(abs(theoretical_tof-measured_tof)) 
         A = diff_m_exp.index(min(diff_m_exp)) 
        
@@ -2563,11 +2624,23 @@ class BeamAnalysis:
         self.particle_mom_final_mean_t0t4_err_plus  = {"electron": 0,"muon": 0,"pion": 0,"proton": 0,"deuteron":0,"helium3":0}
 
         #Make the TOF error a constant fraction of the sigma so the electron TOF uncertainty is 0.05ns (it should be the smallest)
-        factor_uncertainty = max(0.05/self.particle_tof_std["electron"], 1)
+        factor_uncertainty = min(0.05/self.particle_tof_std["electron"], 1)
 
-        factor_uncertainty_t0t4 = max(0.05/self.particle_tof_t0t4_std["electron"], 1)
+        factor_uncertainty_t0t4 = min(0.05/self.particle_tof_t0t4_std["electron"], 1)
 
-        for particle in ["Muons", "Pions", "Protons", "Deuteron", "Helium3"]:
+        if self.run_momentum > 0:
+            list_particles = ["Muons", "Pions", "Protons", "Deuteron", "Helium3"]
+        else:
+            list_particles = ["Muons", "Pions", "Protons"]
+
+        for particle in list_particles:
+
+            if self.is_kaon_run and particle == "Muons":
+                print("This is a kaon run, using the kaon mass for the momentum extrapolation of the 'Muons' selection")
+                particle_for_title = "Kaons"
+            else:
+                particle_for_title = particle
+
 
             measured_tof_mean = self.particle_tof_mean[particles_tof_names[particle]]
 
@@ -2580,21 +2653,26 @@ class BeamAnalysis:
             if measured_tof_mean >= 0.2:
 
                 if particle == "Muons" or particle == "Pions":
-                    momentum_guess = np.linspace(190, 2000, 56)
+                    if not self.is_kaon_run:
+                        momentum_guess = np.linspace(190, 2000, 56)
+                    else:
+                        momentum_guess = np.linspace(300, 2000, 56)
 
                 elif particle == "Protons":
-                    momentum_guess = np.linspace(350, 2200, 66)
+                    momentum_guess = np.linspace(400, 2200, 66)
 
                 elif particle == "Deuteron":
                     momentum_guess = np.linspace(650, 2200, 66)
 
                 elif particle == "Helium3":
-                    momentum_guess = np.linspace(850, 4300, 66)
+                    momentum_guess = np.linspace(1200, 4300, 66)
 
                 initial_momentum_th, final_momentum_th, T0T1_TOF_th, T0T4_TOF_th, T4T1_TOF_th = \
                     self.give_theoretical_TOF(particle, momentum_guess)
 
-                # print(f"{particle}: final momentum {final_momentum_th}")
+                
+
+                # print(f"{particle}: starting momentum {initial_momentum_th}, final momentum {final_momentum_th}")
 
                 fig, ax = plt.subplots(figsize=(8, 6))
 
@@ -2657,6 +2735,7 @@ class BeamAnalysis:
                         measured_tof_error,particle,
                         True
                     )
+                # print(f"{particle}: extrapolated initial momentum from T0T1 TOF is {extrapolated_mean_mom} with error +{extrapolated_err_mom_plus} -{extrapolated_err_mom_minus}")
 
                 # --- T0T1 final momentum ---
                 extrapolated_mean_final_mom, extrapolated_err_final_mom_minus, extrapolated_err_final_mom_plus = \
@@ -2667,6 +2746,8 @@ class BeamAnalysis:
                         measured_tof_error,particle,
                         True
                     )
+                # print(f"{particle}: extrapolated final momentum from T0T1 TOF is {extrapolated_mean_final_mom} with error +{extrapolated_err_final_mom_plus} -{extrapolated_err_final_mom_minus}")
+
 
                 # --- T0T4 initial momentum ---
                 extrapolated_mean_mom_t0t4, extrapolated_err_mom_t0t4_minus, extrapolated_err_mom_t0t4_plus = \
@@ -2677,6 +2758,7 @@ class BeamAnalysis:
                         measured_tof_t0t4_error,particle,
                         True
                     )
+
 
                 # --- T0T4 final momentum ---
                 extrapolated_mean_final_mom_t0t4, extrapolated_err_final_mom_t0t4_minus, extrapolated_err_final_mom_t0t4_plus = \
@@ -2744,13 +2826,13 @@ class BeamAnalysis:
                 if particle == "Muons" or particle == "Pions":
                     ax.set_title(
                         f"Run {self.run_number} "
-                        f"({self.run_momentum} MeV/c) - {particle}\n (Selection tightening {self.tightening_offset*100:.0f}%)",
+                        f"({self.run_momentum} MeV/c) - {particle_for_title}\n (Selection tightening {self.tightening_offset*100:.0f}%)",
                         fontsize=20
                     )
                 else:
                     ax.set_title(
                         f"Run {self.run_number} "
-                        f"({self.run_momentum} MeV/c) - {particle}",
+                        f"({self.run_momentum} MeV/c) - {particle_for_title}",
                         fontsize=20
                     )
 
@@ -2782,8 +2864,9 @@ class BeamAnalysis:
             
     def measure_particle_TOF(self):
         '''Measure the TOF for each of the particles accounting for any offsets between the electron TOF and L/c'''
-        
-        
+
+        lbl = self._plabels
+
         there_is_proton = False
         if sum(self.df["is_proton"]) > 10:
             there_is_proton = True
@@ -2851,13 +2934,16 @@ class BeamAnalysis:
         ax.hist(electron_tof_t0t4, bins = bins_tof_t0t4, histtype = "step")
         ax.grid
         ax.plot(bins_tof_t0t4, gaussian(bins_tof_t0t4, popt_t0t4[0], popt_t0t4[1], popt_t0t4[2]), "--", color = "k")
-        ax.set_title("Electron T0-T4 TOF", weight = "bold")
+        ax.set_title(f"{lbl['e']} T0-T4 TOF", weight = "bold")
         ax.set_xlabel("T0-T4 TOF (ns)")
         self.pdf_global.savefig(fig)
 
         
         #For pions and muons, tighten the selection so the accuracy of the momentum estimate is better, this is especially important at higher momentum 
         offset = 0.7
+
+        if self.is_kaon_run:
+            offset = 0.0
 
         print(f"Reducing the cut lines by {offset * 100}%")
 
@@ -2977,7 +3063,7 @@ class BeamAnalysis:
                 ax.set_xlim(theoretical_t0t4_tof_cut-2, theoretical_t0t4_tof_cut+6)
 
                 ax.grid()
-            fig.suptitle(f"Run {self.run_number} ({self.run_momentum} MeV/c) - Muon and Pion TOF \n (Collimator jaw setting: {self.jaw_setting})", fontsize = 20)
+            fig.suptitle(f"Run {self.run_number} ({self.run_momentum} MeV/c) - {lbl['mu']} and Pion TOF \n  {self.jaw_setting}", fontsize = 20)
             self.pdf_global.savefig(fig)
             plt.close()
                 
@@ -3060,20 +3146,19 @@ class BeamAnalysis:
         fig, ax = plt.subplots(figsize = (8, 6))
         
         #plot the distributions
-        ax.hist(self.df["tof_corr"][self.df["is_electron"]==1], bins = bins_tof, histtype = "step", label = f"Electrons: tof = {popt[1]+t0:.2f} "+ r"$\pm$"+ f" {popt[2]:.2f} ns")  
-        ax.hist(self.df["tof_corr"][self.df["is_muon"]==1], bins = bins_tof, histtype = "step", label = f"Muons: tof = {popt_mu[1]:.2f} "+ r"$\pm$"+ f" {popt_mu[2]:.2f} ns")
-        ax.hist(self.df["tof_corr"][self.df["is_tighter_pion"]==1], bins = bins_tof, histtype = "step", label = f"Pions: tof = {popt_pi[1]:.2f} "+ r"$\pm$"+ f" {popt_pi[2]:.2f} ns")
-        
-        
+        ax.hist(self.df["tof_corr"][self.df["is_electron"]==1], bins = bins_tof, histtype = "step", label = f"{lbl['es']}: tof = {popt[1]+t0:.2f} "+ r"$\pm$"+ f" {popt[2]:.2f} ns")
+        ax.hist(self.df["tof_corr"][self.df["is_muon"]==1], bins = bins_tof, histtype = "step", label = f"{lbl['mus']}: tof = {popt_mu[1]:.2f} "+ r"$\pm$"+ f" {popt_mu[2]:.2f} ns")
+        ax.hist(self.df["tof_corr"][self.df["is_tighter_pion"]==1], bins = bins_tof, histtype = "step", label = f"{lbl['pis']}: tof = {popt_pi[1]:.2f} "+ r"$\pm$"+ f" {popt_pi[2]:.2f} ns")
+
         if there_is_proton:
-            ax.hist(self.df["tof_corr"][self.df["is_proton"]==1], bins = bins_tof, histtype = "step", label = f"Protons: tof = {popt_p[1]:.2f} "+ r"$\pm$"+ f" {popt_p[2]:.2f} ns")
+            ax.hist(self.df["tof_corr"][self.df["is_proton"]==1], bins = bins_tof, histtype = "step", label = f"{lbl['ps']}: tof = {popt_p[1]:.2f} "+ r"$\pm$"+ f" {popt_p[2]:.2f} ns")
         else:
-            ax.hist(self.df["tof_corr"][self.df["is_proton"]==1], bins = bins_tof, histtype = "step", label = f"Protons")
-            
+            ax.hist(self.df["tof_corr"][self.df["is_proton"]==1], bins = bins_tof, histtype = "step", label = lbl["ps"])
+
         if sum(self.df["is_deuteron"])>10:
-            ax.hist(self.df["tof_corr"][self.df["is_deuteron"]==1], bins = bins_tof, histtype = "step", label = f"Deuterons: tof = {popt_D[1]:.2f} "+ r"$\pm$"+ f" {popt_D[2]:.2f} ns")
+            ax.hist(self.df["tof_corr"][self.df["is_deuteron"]==1], bins = bins_tof, histtype = "step", label = f"{lbl['Ds']}: tof = {popt_D[1]:.2f} "+ r"$\pm$"+ f" {popt_D[2]:.2f} ns")
         else:
-            ax.hist(self.df["tof_corr"][self.df["is_deuteron"]==1], bins = bins_tof, histtype = "step", label = f"Deuterons")
+            ax.hist(self.df["tof_corr"][self.df["is_deuteron"]==1], bins = bins_tof, histtype = "step", label = lbl["Ds"])
 
         # else:
         #     mean = self.df["tof_corr"][self.df["is_deuteron"]==1].mean()
@@ -3086,20 +3171,17 @@ class BeamAnalysis:
             try:
                 h_He3, _ = np.histogram(self.df["tof_corr"][self.df["is_helium3"]==1], bins = bins_tof)
                 popt_He3, pcov = fit_gaussian(h_He3, bin_centers)
-                ax.hist(self.df["tof_corr"][self.df["is_helium3"]==1], bins = bins_tof, histtype = "step", label = f"Helium3 nuclei: tof = {popt_He3[1]:.2f} "+ r"$\pm$"+ f" {popt_He3[2]:.2f} ns")
+                ax.hist(self.df["tof_corr"][self.df["is_helium3"]==1], bins = bins_tof, histtype = "step", label = f"{lbl['He3s']}: tof = {popt_He3[1]:.2f} "+ r"$\pm$"+ f" {popt_He3[2]:.2f} ns")
                 ax.plot(bins_tof, gaussian(bins_tof, popt_He3[0], popt_He3[1], popt_He3[2]), "--", color = "k")
-                
-                
             except:
                 popt_He3 = [0, 0, 0]
                 mean = self.df["tof_corr"][self.df["is_helium3"]==1].mean()
                 std = self.df["tof_corr"][self.df["is_helium3"]==1].std()
-                ax.hist(self.df["tof_corr"][self.df["is_helium3"]==1], bins = bins_tof, histtype = "step", label = f"Helium3 nuclei: tof = {mean:.2f} "+ r"$\pm$"+ f" {std:.2f} ns")
-
+                ax.hist(self.df["tof_corr"][self.df["is_helium3"]==1], bins = bins_tof, histtype = "step", label = f"{lbl['He3s']}: tof = {mean:.2f} "+ r"$\pm$"+ f" {std:.2f} ns")
         else:
             mean = self.df["tof_corr"][self.df["is_helium3"]==1].mean()
-            std = self.df["tof_corr"][self.df["is_helium3"]==1].std()   
-            ax.hist(self.df["tof_corr"][self.df["is_helium3"]==1], bins = bins_tof, histtype = "step", label = f"Helium3")
+            std = self.df["tof_corr"][self.df["is_helium3"]==1].std()
+            ax.hist(self.df["tof_corr"][self.df["is_helium3"]==1], bins = bins_tof, histtype = "step", label = lbl["He3"])
             
         #plot the fits, for visual inspection
         
@@ -3119,9 +3201,9 @@ class BeamAnalysis:
         #add the proton, deuteron and deuterium cut lines as shaded areas:
         if abs(self.run_momentum) > 350:
             try:
-                ax.axvline(x=self.proton_tof_cut+t0, color='red', linestyle='--', linewidth=2, label=f'Proton cut: {self.proton_tof_cut+t0:.2f} ns')
-                ax.axvline(x=self.deuteron_tof_cut+t0, color='purple', linestyle='--', linewidth=2, label=f'Deuteron cut: {self.deuteron_tof_cut+t0:.2f} ns')
-                ax.axvline(x=self.helium3_tof_cut+t0, color='brown', linestyle='--', linewidth=2, label=f'Helium3 cut: {self.helium3_tof_cut+t0:.2f} ns')
+                ax.axvline(x=self.proton_tof_cut+t0, color='red', linestyle='--', linewidth=2, label=f'{lbl["p"]} cut: {self.proton_tof_cut+t0:.2f} ns')
+                ax.axvline(x=self.deuteron_tof_cut+t0, color='purple', linestyle='--', linewidth=2, label=f'{lbl["D"]} cut: {self.deuteron_tof_cut+t0:.2f} ns')
+                ax.axvline(x=self.helium3_tof_cut+t0, color='brown', linestyle='--', linewidth=2, label=f'{lbl["He3"]} cut: {self.helium3_tof_cut+t0:.2f} ns')
             except: 
                 print("TOF cuts for heavier particles not defined or nans, not plotting them")
 
@@ -3131,7 +3213,7 @@ class BeamAnalysis:
         ax.grid()
         ax.set_yscale("log")
         ax.set_ylim(0.5, 5e5)
-        ax.set_title(f"Run {self.run_number} T0-T1 TOF ({self.run_momentum} MeV/c) \n (Collimator jaw setting: {self.jaw_setting}", fontsize = 20)
+        ax.set_title(f"Run {self.run_number} T0-T1 TOF ({self.run_momentum} MeV/c) \n{self.jaw_setting}", fontsize = 20)
         self.pdf_global.savefig(fig)
         
         
@@ -3149,21 +3231,21 @@ class BeamAnalysis:
         fig, ax = plt.subplots(figsize = (8, 6))
         
         #plot the distributions
-        ax.hist(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_electron"]==1], bins = bins_tof_t0t4, histtype = "step", label = f"Electrons: tof = {popt_t0t4[1]+t0_t0t4:.2f} "+ r"$\pm$"+ f" {popt_t0t4[2]:.2f} ns")  
-        ax.hist(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_muon"]==1], bins = bins_tof_t0t4, histtype = "step", label = f"Muons: tof = {popt_mu_t0t4[1]:.2f} "+ r"$\pm$"+ f" {popt_mu_t0t4[2]:.2f} ns")
-        ax.hist(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_pion"]==1], bins = bins_tof_t0t4, histtype = "step", label = f"Pions: tof = {popt_pi_t0t4[1]:.2f} "+ r"$\pm$"+ f" {popt_pi_t0t4[2]:.2f} ns")
+        ax.hist(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_electron"]==1], bins = bins_tof_t0t4, histtype = "step", label = f"{lbl['es']}: tof = {popt_t0t4[1]+t0_t0t4:.2f} "+ r"$\pm$"+ f" {popt_t0t4[2]:.2f} ns")
+        ax.hist(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_muon"]==1], bins = bins_tof_t0t4, histtype = "step", label = f"{lbl['mus']}: tof = {popt_mu_t0t4[1]:.2f} "+ r"$\pm$"+ f" {popt_mu_t0t4[2]:.2f} ns")
+        ax.hist(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_pion"]==1], bins = bins_tof_t0t4, histtype = "step", label = f"{lbl['pis']}: tof = {popt_pi_t0t4[1]:.2f} "+ r"$\pm$"+ f" {popt_pi_t0t4[2]:.2f} ns")
         
         
         # if we are making the plots for the beam paper analyses, discard the out of time events:
         if there_is_proton:
             if self.is_beam_paper_analysis:
                 mask = (self.df_goodT4["tof_t0t4_corr"] >= self.expected_T0T4_proton - 5) & (self.df_goodT4["tof_t0t4_corr"] <= self.expected_T0T4_proton + 5)
-                ax.hist(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_proton"]==1][mask], bins = bins_tof_t0t4, histtype = "step", label = f"Protons: tof = {popt_p_t0t4[1]:.2f} "+ r"$\pm$"+ f" {popt_p_t0t4[2]:.2f} ns")
+                ax.hist(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_proton"]==1][mask], bins = bins_tof_t0t4, histtype = "step", label = f"{lbl['ps']}: tof = {popt_p_t0t4[1]:.2f} "+ r"$\pm$"+ f" {popt_p_t0t4[2]:.2f} ns")
             else:
-                ax.hist(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_proton"]==1], bins = bins_tof_t0t4, histtype = "step", label = f"Protons: tof = {popt_p_t0t4[1]:.2f} "+ r"$\pm$"+ f" {popt_p_t0t4[2]:.2f} ns")
-            
+                ax.hist(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_proton"]==1], bins = bins_tof_t0t4, histtype = "step", label = f"{lbl['ps']}: tof = {popt_p_t0t4[1]:.2f} "+ r"$\pm$"+ f" {popt_p_t0t4[2]:.2f} ns")
+
         if sum(self.df_goodT4["is_deuteron"])>10:
-            ax.hist(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_deuteron"]==1], bins = bins_tof_t0t4, histtype = "step", label = f"Deuterons: tof = {popt_D_t0t4[1]:.2f} "+ r"$\pm$"+ f" {popt_D_t0t4[2]:.2f} ns")
+            ax.hist(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_deuteron"]==1], bins = bins_tof_t0t4, histtype = "step", label = f"{lbl['Ds']}: tof = {popt_D_t0t4[1]:.2f} "+ r"$\pm$"+ f" {popt_D_t0t4[2]:.2f} ns")
            
         
         popt_He3_t0t4 = [0, 0, 0]
@@ -3172,7 +3254,7 @@ class BeamAnalysis:
             try:
                 h_He3_t0t4, _ = np.histogram(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_helium3"]==1], bins = bins_tof_t0t4)
                 popt_He3_t0t4, pcov_t0t4 = fit_gaussian(h_He3_t0t4, bin_centers_t0t4)
-                ax.hist(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_helium3"]==1], bins = bins_tof_t0t4, histtype = "step", label = f"Helium3 nuclei: tof = {popt_He3_t0t4[1]:.2f} "+ r"$\pm$"+ f" {popt_He3_t0t4[2]:.2f} ns")
+                ax.hist(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_helium3"]==1], bins = bins_tof_t0t4, histtype = "step", label = f"{lbl['He3s']}: tof = {popt_He3_t0t4[1]:.2f} "+ r"$\pm$"+ f" {popt_He3_t0t4[2]:.2f} ns")
                 ax.plot(bins_tof_t0t4, gaussian(bins_tof_t0t4, popt_He3_t0t4[0], popt_He3_t0t4[1], popt_He3_t0t4[2]), "--", color = "k")
                 
                 
@@ -3182,7 +3264,7 @@ class BeamAnalysis:
                 std = self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_helium3"]==1].std()
 
                 popt_He3_t0t4 = [0, mean, std]
-                ax.hist(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_helium3"]==1], bins = bins_tof, histtype = "step", label = f"Helium3 nuclei: tof = {mean:.2f} "+ r"$\pm$"+ f" {std:.2f} ns")
+                ax.hist(self.df_goodT4["tof_t0t4_corr"][self.df_goodT4["is_helium3"]==1], bins = bins_tof, histtype = "step", label = f"{lbl['He3s']}: tof = {mean:.2f} "+ r"$\pm$"+ f" {std:.2f} ns")
 
             
       
@@ -3212,7 +3294,7 @@ class BeamAnalysis:
         ax.grid()
         ax.set_yscale("log")
         ax.set_ylim(0.5, 5e5)
-        ax.set_title(f"Run {self.run_number} T0-T4 TOF ({self.run_momentum} MeV/c)\n (Collimator jaw setting: {self.jaw_setting})", fontsize = 20)
+        ax.set_title(f"Run {self.run_number} T0-T4 TOF ({self.run_momentum} MeV/c)\n{self.jaw_setting}", fontsize = 20)
         self.pdf_global.savefig(fig)
         
         
@@ -3296,7 +3378,9 @@ class BeamAnalysis:
     def refine_particle_momentum_using_TOF(self):
         "This function makes a cleaner selection of muons and pions at higher momentum and uses it to refine the measurement of the momentum."
 
-        #Step 1: make a tighter muon and pion selection 
+        lbl = self._plabels
+
+        #Step 1: make a tighter muon and pion selection
 
         if self.using_mu_tag_cut:
             self.df["is_tighter_muon"] = self.df["is_muon"] & (self.df["act_eveto"]< self.eveto_cut * 0.5) & (self.df["act_tagger"]> self.act35_cut_pi_mu * 1.50) & (self.df["mu_tag_total"]>self.mu_tag_cut)
@@ -3332,12 +3416,12 @@ class BeamAnalysis:
         ax1 = axes[1]
 
         #muons on one side
-        ax.scatter(self.df["act_eveto"][mask_muon_nominal][0:10000], self.df["act_tagger"][mask_muon_nominal][0:10000], label = "Nominal muon events", alpha = 0.5)
+        ax.scatter(self.df["act_eveto"][mask_muon_nominal][0:10000], self.df["act_tagger"][mask_muon_nominal][0:10000], label = f"Nominal {lbl['mu'].lower()} events", alpha = 0.5)
         ax.scatter(self.df["act_eveto"][mask_muon_tighter][0:10000], self.df["act_tagger"][mask_muon_tighter][0:10000], label = "Tighter selection", alpha = 0.5)
         ax.set_xlabel("ACT02 charge (PE)")
         ax.set_ylabel("ACT35 charge (PE)")
         ax.legend()
-        ax.set_title("Muon selection")
+        ax.set_title(f"{lbl['mu']} selection")
         ax.grid()
         #pions on the other side
         ax1.scatter(self.df["act_eveto"][mask_pion_nominal][0:10000], self.df["act_tagger"][mask_pion_nominal][0:10000], label = "Nominal pion events", alpha = 0.5)
@@ -3345,7 +3429,7 @@ class BeamAnalysis:
         ax1.set_xlabel("ACT02 charge (PE)")
         ax1.set_ylabel("ACT35 charge (PE)")
         ax1.legend()
-        ax1.set_title("Pion selection")
+        ax1.set_title(f"{lbl['pi']} selection")
         ax1.grid()
         fig.suptitle(f"Run {self.run_number} ({self.run_momentum} MeV/c)", fontsize = 20)
         fig.tight_layout()
@@ -3367,7 +3451,7 @@ class BeamAnalysis:
         ax.set_yscale("log")
 
         ax.legend(fontsize =12)
-        ax.set_title("Muons", fontsize =14)
+        ax.set_title(lbl["mus"], fontsize =14)
         ax.grid()
 
 
@@ -3378,7 +3462,7 @@ class BeamAnalysis:
         ax1.set_ylabel("Number of events")
         ax1.legend(fontsize =12)
         ax1.set_yscale("log")
-        ax1.set_title("Pions", fontsize =14)
+        ax1.set_title(lbl["pis"], fontsize =14)
         ax1.grid()
         fig.suptitle(f"Run {self.run_number} ({self.run_momentum} MeV/c)", fontsize = 20)
         fig.tight_layout()
@@ -3414,7 +3498,7 @@ class BeamAnalysis:
 
         bins = np.linspace(13.5, 20.5, 150)
 
-        ax.axvline(T0T1_TOF_th_muon_nominal, color = "red", linestyle = ':', label = f"Nominal muon TOF: {T0T1_TOF_th_muon_nominal:.3f}ns")
+        ax.axvline(T0T1_TOF_th_muon_nominal, color = "red", linestyle = ':', label = f"Nominal {lbl['mu'].lower()} TOF: {T0T1_TOF_th_muon_nominal:.3f}ns")
         ax.hist(self.df["tof_corr"][mask_muon_nominal], bins = bins, histtype = "step", label = f"Nominal: {sum(mask_muon_nominal)} events")
         #gaussian fit to the nominal muon TOF distribution
         h_mu, bin_edges_mu = np.histogram(self.df["tof_corr"][mask_muon_nominal], bins = bins)
@@ -3457,7 +3541,7 @@ class BeamAnalysis:
         # ax.set_xlabel("Time of flight (ns)", fontsize = 14)
         ax.set_ylabel("Number of events", fontsize = 14)
         ax.legend(fontsize = 12)
-        ax.set_title("T0-T1 TOF distribution for muon selection", fontsize = 14)
+        ax.set_title(f"T0-T1 TOF distribution for {lbl['mu'].lower()} selection", fontsize = 14)
         ax.grid()
 
         #plot the residuals for the muon fits
@@ -3553,23 +3637,24 @@ class BeamAnalysis:
         
     def plot_TOF_charge_distribution(self):
         '''Check visually the total charge deposited in the TOF detector, can be handy to identify events that do not actually cross the TOF'''
-        
-        
+
+        lbl = self._plabels
+
         fig, ax = plt.subplots(figsize = (8, 6))
-        
+
         bins = np.linspace( min(self.df_all["total_TOF_charge"]), max(self.df_all["total_TOF_charge"]), 100)
-        _ = ax.hist(self.df["total_TOF_charge"][self.df["is_electron"] == 1], bins = bins, label = 'electron', histtype = "step")
-        _ = ax.hist(self.df["total_TOF_charge"][self.df["is_muon"] == 1], bins = bins, label = 'muon', histtype = "step")
-        _ = ax.hist(self.df["total_TOF_charge"][self.df["is_pion"] == 1], bins = bins, label = 'pion', histtype = "step")
+        _ = ax.hist(self.df["total_TOF_charge"][self.df["is_electron"] == 1], bins = bins, label = lbl["e"], histtype = "step")
+        _ = ax.hist(self.df["total_TOF_charge"][self.df["is_muon"] == 1], bins = bins, label = lbl["mu"], histtype = "step")
+        _ = ax.hist(self.df["total_TOF_charge"][self.df["is_pion"] == 1], bins = bins, label = lbl["pi"], histtype = "step")
 
         if sum(self.df["is_proton"] == 1)>100:
-            _ = ax.hist(self.df["total_TOF_charge"][self.df["is_proton"] == 1], bins = bins, label = 'proton', histtype = "step")
-            
+            _ = ax.hist(self.df["total_TOF_charge"][self.df["is_proton"] == 1], bins = bins, label = lbl["p"], histtype = "step")
+
         if sum(self.df["is_helium3"] == 1) >1:
-            _ = ax.hist(self.df["total_TOF_charge"][self.df["is_helium3"] == 1], bins = bins, label = 'helium3', histtype = "step")
-            
+            _ = ax.hist(self.df["total_TOF_charge"][self.df["is_helium3"] == 1], bins = bins, label = lbl["He3"], histtype = "step")
+
         if sum(self.df["is_deuteron"] == 1) >10:
-            _ = ax.hist(self.df["total_TOF_charge"][self.df["is_deuteron"] == 1], bins = bins, label = 'deuteron', histtype = "step")
+            _ = ax.hist(self.df["total_TOF_charge"][self.df["is_deuteron"] == 1], bins = bins, label = lbl["D"], histtype = "step")
             
         _ = ax.hist(self.df_all["total_TOF_charge"][self.df_all["is_kept"] == 0], bins = bins, label = 'Triggers not kept for analysis', color = "k", histtype = "step")
 
@@ -3581,16 +3666,16 @@ class BeamAnalysis:
 
         fig, ax = plt.subplots(figsize = (8, 6))
         bins = np.linspace( min(self.df["total_TOF_charge"]), max(self.df["total_TOF_charge"]), 100)
-        _ = ax.hist(self.df["total_TOF_charge"][self.df["is_electron"] == 1], bins = bins, label = 'electron', histtype = "step")
-        _ = ax.hist(self.df["total_TOF_charge"][self.df["is_muon"] == 1], bins = bins, label = 'muon', histtype = "step")
-        _ = ax.hist(self.df["total_TOF_charge"][self.df["is_pion"] == 1], bins = bins, label = 'pion', histtype = "step")
+        _ = ax.hist(self.df["total_TOF_charge"][self.df["is_electron"] == 1], bins = bins, label = lbl["e"], histtype = "step")
+        _ = ax.hist(self.df["total_TOF_charge"][self.df["is_muon"] == 1], bins = bins, label = lbl["mu"], histtype = "step")
+        _ = ax.hist(self.df["total_TOF_charge"][self.df["is_pion"] == 1], bins = bins, label = lbl["pi"], histtype = "step")
 
         if sum(self.df["is_proton"] == 1)>100:
-            _ = ax.hist(self.df["total_TOF_charge"][self.df["is_proton"] == 1], bins = bins, label = 'proton', histtype = "step")
+            _ = ax.hist(self.df["total_TOF_charge"][self.df["is_proton"] == 1], bins = bins, label = lbl["p"], histtype = "step")
         if sum(self.df["is_deuteron"] == 1) >10:
-            _ = ax.hist(self.df["total_TOF_charge"][self.df["is_deuteron"] == 1], bins = bins, label = 'deuteron', histtype = "step")
+            _ = ax.hist(self.df["total_TOF_charge"][self.df["is_deuteron"] == 1], bins = bins, label = lbl["D"], histtype = "step")
         if sum(self.df["is_helium3"] == 1) >5:
-            _ = ax.hist(self.df["total_TOF_charge"][self.df["is_helium3"] == 1], bins = bins, label = 'helium3', histtype = "step")
+            _ = ax.hist(self.df["total_TOF_charge"][self.df["is_helium3"] == 1], bins = bins, label = lbl["He3"], histtype = "step")
 
         ax.legend()
         ax.set_yscale("log")
@@ -3634,10 +3719,11 @@ class BeamAnalysis:
             # Write scalar metadata as a separate tree (recommended)
             f["run_info"] = {
                 "run_number": np.array([self.run_number], dtype=np.int32),
-                "run_momentum": np.array([self.run_momentum], dtype=np.float64),          
+                "run_momentum": np.array([self.run_momentum], dtype=np.float64),
                 "n_eveto": np.array([self.n_eveto], dtype=np.float64),
                 "n_tagger": np.array([self.n_tagger], dtype=np.float64),
                 "there_is_ACT5":np.array([self.there_is_ACT5], dtype = np.int32),
+                "is_kaon_run": np.array([int(self.is_kaon_run)], dtype=np.int32),
 
             }
 
@@ -3770,13 +3856,15 @@ class BeamAnalysis:
             # Write scalar metadata as a separate tree (recommended)
             f["run_info"] = {
                 "run_number": np.array([self.run_number], dtype=np.int32),
-                "run_momentum": np.array([self.run_momentum], dtype=np.int64),          
+                "run_momentum": np.array([self.run_momentum], dtype=np.int64),
                 "n_eveto": np.array([self.n_eveto], dtype=np.float64),
                 "n_tagger": np.array([self.n_tagger], dtype=np.float64),
                 "there_is_ACT5":np.array([self.there_is_ACT5], dtype = np.int32),
                 "collimator_jaw_pos1": np.array([self.momentum_slit_negative], dtype=np.float64),
                 "collimator_jaw_pos2": np.array([self.momentum_slit_positive], dtype=np.float64),
-                  
+                "acceptance_jaw_pos1": np.array([self.acceptance_slit_negative], dtype=np.float64),
+                "acceptance_jaw_pos2": np.array([self.acceptance_slit_positive], dtype=np.float64),
+                "is_kaon_run": np.array([int(self.is_kaon_run)], dtype=np.int32),
 
             }
 
@@ -3880,6 +3968,8 @@ class BeamAnalysis:
             
     def study_electrons(self, cut_line):
         '''This function is dedicated to understanding why some electrons are missed by the ACT02 tag and check why some muons and pions are tagged as electrons'''
+
+        lbl = self._plabels
         #step 1: make a selection of the particles that are not tagged as electrons by ACT02 but deposit a lot of light in the ACT35
         mask = (self.df["is_electron"] == 0) & (self.df["act_tagger"] >= cut_line) & (self.df["tof"] < proton_tof_cut) 
         df_e = self.df[mask]
@@ -3975,8 +4065,8 @@ class BeamAnalysis:
         ax.hist(df_e_true["tof"], bins = tof_bins, color = "red", label = f"e-like triggers not tagged by ACT20 with ACT35 > {cut_line}")
         ax.hist(df_mu_true["tof"], bins = tof_bins, color = "black", label = f"mu-like triggers not tagged by ACT20 with ACT35 > {cut_line}")
         ax.hist(self.df["tof"][self.df["is_electron"]], bins = tof_bins, label = "Triggers tagged as electrons by ACT20", histtype = "step")
-        ax.hist(self.df["tof"][self.df["is_muon"]], bins = tof_bins, label = "Muons", histtype = "step")
-        ax.hist(self.df["tof"][self.df["is_pion"]], bins = tof_bins, label = "Pions", histtype = "step")
+        ax.hist(self.df["tof"][self.df["is_muon"]], bins = tof_bins, label = lbl["mus"], histtype = "step")
+        ax.hist(self.df["tof"][self.df["is_pion"]], bins = tof_bins, label = lbl["pis"], histtype = "step")
         ax.axvline(mid_tof_e_mu, linestyle = "--", color = "k", label = f"e/mu tof cut: {mid_tof_e_mu:.2f}")
         fig.suptitle(f"Study of triggers \n not tagged by ACT20 with ACT35 > {cut_line} PE", weight = "bold", fontsize = 18)
         ax.legend()
@@ -3994,7 +4084,7 @@ class BeamAnalysis:
             for j, ax in enumerate(ax_row):
                 ax.grid()
                 
-                ax.scatter(df_mu_true[f"act{i}_l"], df_mu_true[f"act{j}_r"], color = "black", label = "muon-like", s = 2)
+                ax.scatter(df_mu_true[f"act{i}_l"], df_mu_true[f"act{j}_r"], color = "black", label = f"{lbl['mu'].lower()}-like", s = 2)
                 ax.scatter(df_e_true[f"act{i}_l"], df_e_true[f"act{j}_r"], color = "red", label = "electron-like", s = 1)
                 
                 ax.set_xlabel(f"ACT{i} left (PE)", fontsize = 12)
@@ -4017,7 +4107,7 @@ class BeamAnalysis:
                 j = j+3
                 ax.grid()
                 
-                ax.scatter(df_mu_true[f"act{i}_l"], df_mu_true[f"act{j}_r"], color = "black", label = "muon-like", s = 2)
+                ax.scatter(df_mu_true[f"act{i}_l"], df_mu_true[f"act{j}_r"], color = "black", label = f"{lbl['mu'].lower()}-like", s = 2)
                 ax.scatter(df_e_true[f"act{i}_l"], df_e_true[f"act{j}_r"], color = "red", label = "electron-like", s = 1)
                 
                 ax.set_xlabel(f"ACT{i} left (PE)", fontsize = 12)
@@ -4035,7 +4125,7 @@ class BeamAnalysis:
                 j = j+3 
                 ax.grid()
                 
-                ax.scatter(df_mu_true[f"act{i}_l"], df_mu_true[f"act{j}_l"], color = "black", label = "muon-like", s = 2)
+                ax.scatter(df_mu_true[f"act{i}_l"], df_mu_true[f"act{j}_l"], color = "black", label = f"{lbl['mu'].lower()}-like", s = 2)
                 ax.scatter(df_e_true[f"act{i}_l"], df_e_true[f"act{j}_l"], color = "red", label = "electron-like", s = 1)
                 
                 ax.set_xlabel(f"ACT{i} left (PE)", fontsize = 12)
@@ -4056,7 +4146,7 @@ class BeamAnalysis:
                 j = j+3 
                 ax.grid()
                 
-                ax.scatter(df_mu_true[f"act{i}_r"], df_mu_true[f"act{j}_r"], color = "black", label = "muon-like", s = 2)
+                ax.scatter(df_mu_true[f"act{i}_r"], df_mu_true[f"act{j}_r"], color = "black", label = f"{lbl['mu'].lower()}-like", s = 2)
                 ax.scatter(df_e_true[f"act{i}_r"], df_e_true[f"act{j}_r"], color = "red", label = "electron-like", s = 1)
                 ax.set_xlabel(f"ACT{i} right (PE)", fontsize = 12)
 
@@ -4072,8 +4162,10 @@ class BeamAnalysis:
         
     def plot_number_particles_per_POT(self):
         '''This function plots the number of particles of each type recorded per spill and then per POT, required for the beam flux paper and represent an example of how to read POT information from Arturo's readings of the nxcals CERN database'''
-        
-#         #making a complete dataframe with all of the entries, including the rejected ones 
+
+        lbl = self._plabels
+
+#         #making a complete dataframe with all of the entries, including the rejected ones
 #         df_comp = self.df_all.copy()
         
 #         for col in self.df.columns:
@@ -4096,12 +4188,12 @@ class BeamAnalysis:
         
         
         fig, ax = plt.subplots(figsize = (8, 6))
-        ax.plot(spill_index, number_e_per_spill, "x", label = f"Electrons ({sum(self.df['is_electron'])})")
-        ax.plot(spill_index, number_mu_per_spill, "x", label = f"Muons  ({sum(self.df['is_muon'])})")
-        ax.plot(spill_index, number_pi_per_spill, "x", label = f"Pions  ({sum(self.df['is_pion'])})")
-        ax.plot(spill_index, number_p_per_spill, "x", label = f"Protons  ({sum(self.df['is_proton'])})")
-        ax.plot(spill_index, number_D_per_spill, "x", label = f"Deuterons  ({sum(self.df['is_deuteron'])})")
-        ax.plot(spill_index, number_3He_per_spill, "x", label = f"Helium3  ({sum(self.df['is_helium3'])})")
+        ax.plot(spill_index, number_e_per_spill, "x", label = f"{lbl['es']} ({sum(self.df['is_electron'])})")
+        ax.plot(spill_index, number_mu_per_spill, "x", label = f"{lbl['mus']}  ({sum(self.df['is_muon'])})")
+        ax.plot(spill_index, number_pi_per_spill, "x", label = f"{lbl['pis']}  ({sum(self.df['is_pion'])})")
+        ax.plot(spill_index, number_p_per_spill, "x", label = f"{lbl['ps']}  ({sum(self.df['is_proton'])})")
+        ax.plot(spill_index, number_D_per_spill, "x", label = f"{lbl['Ds']}  ({sum(self.df['is_deuteron'])})")
+        ax.plot(spill_index, number_3He_per_spill, "x", label = f"{lbl['He3']}  ({sum(self.df['is_helium3'])})")
         n_rejected_triggers = len(self.df_all["tof"])-len(self.df["tof"])
         ax.plot(spill_index_all, number_rejected_per_spill, "x", label = f"Rejected triggers ({n_rejected_triggers})", color =  "darkgray")
         ax.set_ylabel("Number of particles", fontsize = 20)
@@ -4123,10 +4215,8 @@ class BeamAnalysis:
             df_pot = pd.read_csv(f"/eos/experiment/wcte/user_data/fiorenti/nxcals/pot/brb_run_{self.run_number}_pot.csv")
             #the first column is the time stamp, the second is the number of POT for that spill 
             df_pot = df_pot.rename(columns={df_pot.columns[0]: "timestamp", df_pot.columns[1]: "POT"})
-            print(df_pot)
             n_pot_per_trigger = np.array(df_pot["POT"])
             n_pot_per_trigger = n_pot_per_trigger[0:len(spill_index)]
-            print(df_pot)
         except:
             return 0
 
@@ -4152,20 +4242,20 @@ class BeamAnalysis:
         if max(number_e_per_spill) > min_fraction:
 
         
-            h_e, _, _ = ax.hist(number_e_per_spill/n_pot_per_trigger, bins = n_bins, label = "Electrons", color = "blue", histtype = "step")
+            h_e, _, _ = ax.hist(number_e_per_spill/n_pot_per_trigger, bins = n_bins, label = lbl["es"], color = "blue", histtype = "step")
             try:
                 popt, pcov = fit_gaussian(h_e, bin_centers)
-                plt.plot(n_bins_narrow, gaussian(n_bins_narrow, *popt), '--', color = "blue", label = f"Electrons: mean {popt[1]:.2f}, std {popt[2]:.2f}")
+                plt.plot(n_bins_narrow, gaussian(n_bins_narrow, *popt), '--', color = "blue", label = f"{lbl['es']}: mean {popt[1]:.2f}, std {popt[2]:.2f}")
             except:
                 popt  = [0, 0, 0]
         
         
         if max(number_mu_per_spill) > min_fraction:
         
-            h_mu, _, _ = ax.hist(number_mu_per_spill/n_pot_per_trigger, bins = n_bins, label = "Muons", color = "orange", histtype = "step")
+            h_mu, _, _ = ax.hist(number_mu_per_spill/n_pot_per_trigger, bins = n_bins, label = lbl["mus"], color = "orange", histtype = "step")
             try:
                 popt, pcov = fit_gaussian(h_mu, bin_centers)
-                plt.plot(n_bins_narrow, gaussian(n_bins_narrow, *popt), '--', color = "orange", label = f"Muons: mean {popt[1]:.2f}, std {popt[2]:.2f}")
+                plt.plot(n_bins_narrow, gaussian(n_bins_narrow, *popt), '--', color = "orange", label = f"{lbl['mus']}: mean {popt[1]:.2f}, std {popt[2]:.2f}")
             
             except:
                 popt  = [0, 0, 0]
@@ -4173,19 +4263,19 @@ class BeamAnalysis:
 
         if max(number_pi_per_spill) > min_fraction:
         
-            h_pi, _, _ = ax.hist(number_pi_per_spill/n_pot_per_trigger, bins = n_bins, label = "Pions", color = "green", histtype = "step")
+            h_pi, _, _ = ax.hist(number_pi_per_spill/n_pot_per_trigger, bins = n_bins, label = lbl["pis"], color = "green", histtype = "step")
             try:
                 popt, pcov = fit_gaussian(h_pi, bin_centers)
-                plt.plot(n_bins_narrow, gaussian(n_bins_narrow, *popt), '--', color = "green", label = f"Pions: mean {popt[1]:.2f}, std {popt[2]:.2f}")
+                plt.plot(n_bins_narrow, gaussian(n_bins_narrow, *popt), '--', color = "green", label = f"{lbl['pis']}: mean {popt[1]:.2f}, std {popt[2]:.2f}")
         
             except:
                 popt  = [0, 0, 0]
         
         if max(number_p_per_spill) > min_fraction:
-            h_p, _, _ = ax.hist(number_p_per_spill/n_pot_per_trigger, bins = n_bins, label = "Protons", color = "red", histtype = "step")
+            h_p, _, _ = ax.hist(number_p_per_spill/n_pot_per_trigger, bins = n_bins, label = lbl["ps"], color = "red", histtype = "step")
             try:
                 popt, pcov = fit_gaussian(h_p, bin_centers)
-                plt.plot(n_bins_narrow, gaussian(n_bins_narrow, *popt), '--', color = "red", label = f"Protons: mean {popt[1]:.2f}, std {popt[2]:.2f}")
+                plt.plot(n_bins_narrow, gaussian(n_bins_narrow, *popt), '--', color = "red", label = f"{lbl['ps']}: mean {popt[1]:.2f}, std {popt[2]:.2f}")
             except:
                 popt  = [0, 0, 0]
         
@@ -4199,7 +4289,7 @@ class BeamAnalysis:
         
         
         if max(number_3He_per_spill) > min_fraction:
-            h_3He, _, _ = ax.hist(number_3He_per_spill/n_pot_per_trigger, bins = n_bins, label = "Helium3", color = "magenta", histtype = "step")
+            h_3He, _, _ = ax.hist(number_3He_per_spill/n_pot_per_trigger, bins = n_bins, label = lbl["He3"], color = "magenta", histtype = "step")
             try:
                 popt, pcov = fit_gaussian(h_3He, bin_centers)
                 plt.plot(n_bins_narrow, gaussian(n_bins_narrow, *popt), '--', color = "magenta", label = f"3He: mean {popt[1]:.2f}, std {popt[2]:.2f}")
