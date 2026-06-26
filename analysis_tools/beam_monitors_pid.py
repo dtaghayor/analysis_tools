@@ -16,6 +16,8 @@ import gc
 
 from scipy.interpolate import interp1d
 from scipy.optimize import brentq
+from scipy.stats import moyal
+from typing import Dict
 
 #for the nice progress bar
 from tqdm import tqdm
@@ -129,6 +131,12 @@ def read_event_quality_mask(mask,
         result[flag_name] = bool(mask & (1 << bit_idx))
     return result
 
+class NotTheFirstHit(Exception):
+    """Raised when a duplicate TDC hit arrives earlier than the first stored hit,
+    i.e. the hits are not time-ordered as the de-duplication logic assumes."""
+    pass
+
+
 def _deduplicate_tdc_hits(ids, times):
     "Function used to remove the later TDC hits and corresponding channel ids in case there are more than one"
     seen = set()
@@ -143,7 +151,10 @@ def _deduplicate_tdc_hits(ids, times):
             duplicates_removed[ch] += 1
             if stored_times[ch] > t:
                 #in case they are not ordered correctly, this is important
-                raise NotTheFirstHit
+                raise NotTheFirstHit(
+                    f"TDC hits not time-ordered for channel {ch}: "
+                    f"stored first hit at {stored_times[ch]} > later hit at {t}"
+                )
             continue
         seen.add(ch)
         keep_ids.append(ch)
@@ -1920,8 +1931,8 @@ class BeamAnalysis:
         file_for_uproot = local_copy or to_xrootd(file_path)
 
         # Combine all indices and particle labels
-        
-        if store_beam_PID:
+
+        if store_PID_info:
             all_keep_idx = np.concatenate([
                 index_electron,
                 index_mu,
@@ -3733,8 +3744,8 @@ class BeamAnalysis:
             results = {
                 "act_eveto_cut":np.array([self.eveto_cut], dtype=np.float64),
                 "act_tagger_cut":np.array([self.act35_cut_pi_mu], dtype=np.float64),
-                "proton_tof_cut":np.array([proton_tof_cut], dtype=np.float64),
-                "deuteron_tof_cut":np.array([deuteron_tof_cut], dtype=np.float64),
+                "proton_tof_cut":np.array([self.proton_tof_cut], dtype=np.float64),
+                "deuteron_tof_cut":np.array([self.deuteron_tof_cut], dtype=np.float64),
                 "mu_tag_cut": np.array([self.mu_tag_cut], dtype=np.float64),
                 "using_mu_tag_cut": np.array([self.using_mu_tag_cut], dtype=np.float64),
                 
@@ -3971,7 +3982,7 @@ class BeamAnalysis:
 
         lbl = self._plabels
         #step 1: make a selection of the particles that are not tagged as electrons by ACT02 but deposit a lot of light in the ACT35
-        mask = (self.df["is_electron"] == 0) & (self.df["act_tagger"] >= cut_line) & (self.df["tof"] < proton_tof_cut) 
+        mask = (self.df["is_electron"] == 0) & (self.df["act_tagger"] >= cut_line) & (self.df["tof"] < self.proton_tof_cut)
         df_e = self.df[mask]
         
         self.plot_ACT35_left_vs_right(cut_line, "non-tagged e-like triggers")
@@ -4059,7 +4070,7 @@ class BeamAnalysis:
         
         
         ### check against the tof
-        tof_bins = np.linspace(12, proton_tof_cut, 100)
+        tof_bins = np.linspace(12, self.proton_tof_cut, 100)
         fig, ax = plt.subplots(figsize = (8, 6))
         
         ax.hist(df_e_true["tof"], bins = tof_bins, color = "red", label = f"e-like triggers not tagged by ACT20 with ACT35 > {cut_line}")
