@@ -138,6 +138,12 @@ int main(int argc, char **argv) {
   double act0_r_charge, act1_r_charge, act2_r_charge, act3_r_charge,
       act4_r_charge, act5_r_charge;
   double act0_l_time, act0_r_time;
+  double act1_l_time, act1_r_time;
+  double act2_l_time, act2_r_time;
+  double act3_l_time, act3_r_time;
+  double act4_l_time, act4_r_time;
+  double act5_l_time, act5_r_time;
+  double mu_tag_l_time, mu_tag_r_time;
   double tof_t0t1, tof_t0t4, tof_t4t1, tof_t0t5, tof_t1t5, tof_t4t5;
   double ref0_time, ref1_time;
   double act_eveto, act_tagger, tof_corr, tof_t0t4_corr;
@@ -151,19 +157,37 @@ int main(int argc, char **argv) {
 
   // T5 variables
   int T5_event_nr;
-  int T5_particle_nr;
-  bool T5_HasValidHit;
-  bool T5_HasMultipleScintillatorsHit;
-  bool T5_HasOutOfTimeWindow;
-  bool T5_HasInTimeWindow;
-  std::vector<int> *T5_hit_is_in_bounds = nullptr;
-  std::vector<double> *T5_hit_pos_x = nullptr;
-  std::vector<double> *T5_hit_pos_y = nullptr;
-  std::vector<double> *T5_hit_time = nullptr;
-  std::vector<bool> *T5_secondary_hit_is_in_bounds = nullptr;
-  std::vector<double> *T5_secondary_hit_pos_x = nullptr;
-  std::vector<double> *T5_secondary_hit_pos_y = nullptr;
-  std::vector<double> *T5_secondary_hit_time = nullptr;
+  int t5_hit_bitmask;
+  int t5_n_main_bunch_particles;
+  double t5_main_hit_time;
+  double t5_main_hit_charge;
+  double t5_main_hit_pos_x;
+  double t5_main_hit_pos_y;
+  double t5_main_hit_pos_x_error;
+  double t5_main_hit_pos_y_error;
+  std::vector<double> *t5_all_hits_pos_x = nullptr;
+  std::vector<double> *t5_all_hits_pos_y = nullptr;
+  std::vector<double> *t5_all_hits_pos_x_error = nullptr;
+  std::vector<double> *t5_all_hits_pos_y_error = nullptr;
+  std::vector<double> *t5_all_hits_time = nullptr;
+  std::vector<double> *t5_all_hits_charge = nullptr;
+  std::vector<int> *t5_all_hits_is_in_time_window = nullptr;
+  std::vector<int> *t5_all_hits_is_in_bounds = nullptr;
+
+  // Production 1.0 - out of date
+  // int T5_particle_nr;
+  // bool T5_HasValidHit;
+  // bool T5_HasMultipleScintillatorsHit;
+  // bool T5_HasOutOfTimeWindow;
+  // bool T5_HasInTimeWindow;
+  // std::vector<int> *T5_hit_is_in_bounds = nullptr;
+  // std::vector<double> *T5_hit_pos_x = nullptr;
+  // std::vector<double> *T5_hit_pos_y = nullptr;
+  // std::vector<double> *T5_hit_time = nullptr;
+  // std::vector<bool> *T5_secondary_hit_is_in_bounds = nullptr;
+  // std::vector<double> *T5_secondary_hit_pos_x = nullptr;
+  // std::vector<double> *T5_secondary_hit_pos_y = nullptr;
+  // std::vector<double> *T5_secondary_hit_time = nullptr;
 
   // CALIBRATED HITS variables (Input Arrays)
   const int MAX_HITS = 200000;
@@ -460,6 +484,18 @@ int main(int argc, char **argv) {
       t_beam->SetBranchAddress("act5_r_charge", &act5_r_charge);
       t_beam->SetBranchAddress("act0_l_time", &act0_l_time);
       t_beam->SetBranchAddress("act0_r_time", &act0_r_time);
+      t_beam->SetBranchAddress("act1_l_time", &act1_l_time);
+      t_beam->SetBranchAddress("act1_r_time", &act1_r_time);
+      t_beam->SetBranchAddress("act2_l_time", &act2_l_time);
+      t_beam->SetBranchAddress("act2_r_time", &act2_r_time);
+      t_beam->SetBranchAddress("act3_l_time", &act3_l_time);
+      t_beam->SetBranchAddress("act3_r_time", &act3_r_time);
+      t_beam->SetBranchAddress("act4_l_time", &act4_l_time);
+      t_beam->SetBranchAddress("act4_r_time", &act4_r_time);
+      t_beam->SetBranchAddress("act5_l_time", &act5_l_time);
+      t_beam->SetBranchAddress("act5_r_time", &act5_r_time);
+      t_beam->SetBranchAddress("mu_tag_l_time", &mu_tag_l_time);
+      t_beam->SetBranchAddress("mu_tag_r_time", &mu_tag_r_time);
       t_beam->SetBranchAddress("tof_t0t1", &tof_t0t1);
       t_beam->SetBranchAddress("tof_t0t4", &tof_t0t4);
       t_beam->SetBranchAddress("tof_t4t1", &tof_t4t1);
@@ -493,21 +529,40 @@ int main(int argc, char **argv) {
 
     // Set Branches - T5
     t_t5->SetBranchAddress("event_nr", &T5_event_nr);
-    t_t5->SetBranchAddress("T5_particle_nr", &T5_particle_nr);
-    t_t5->SetBranchAddress("T5_HasValidHit", &T5_HasValidHit);
-    t_t5->SetBranchAddress("T5_HasMultipleScintillatorsHit",
-                           &T5_HasMultipleScintillatorsHit);
-    t_t5->SetBranchAddress("T5_HasOutOfTimeWindow", &T5_HasOutOfTimeWindow);
-    t_t5->SetBranchAddress("T5_HasInTimeWindow", &T5_HasInTimeWindow);
-    t_t5->SetBranchAddress("T5_hit_is_in_bounds", &T5_hit_is_in_bounds);
-    t_t5->SetBranchAddress("T5_hit_pos_x", &T5_hit_pos_x);
-    t_t5->SetBranchAddress("T5_hit_pos_y", &T5_hit_pos_y);
-    t_t5->SetBranchAddress("T5_hit_time", &T5_hit_time);
-    t_t5->SetBranchAddress("T5_secondary_hit_is_in_bounds",
-                           &T5_secondary_hit_is_in_bounds);
-    t_t5->SetBranchAddress("T5_secondary_hit_pos_x", &T5_secondary_hit_pos_x);
-    t_t5->SetBranchAddress("T5_secondary_hit_pos_y", &T5_secondary_hit_pos_y);
-    t_t5->SetBranchAddress("T5_secondary_hit_time", &T5_secondary_hit_time);
+    t_t5->SetBranchAddress("T5_hit_bitmask", &t5_hit_bitmask);
+    t_t5->SetBranchAddress("T5_n_main_bunch_particles",
+                           &t5_n_main_bunch_particles);
+    t_t5->SetBranchAddress("T5_main_hit_time", &t5_main_hit_time);
+    t_t5->SetBranchAddress("T5_main_hit_charge", &t5_main_hit_charge);
+    t_t5->SetBranchAddress("T5_main_hit_pos_x", &t5_main_hit_pos_x);
+    t_t5->SetBranchAddress("T5_main_hit_pos_y", &t5_main_hit_pos_y);
+    t_t5->SetBranchAddress("T5_main_hit_pos_x_error", &t5_main_hit_pos_x_error);
+    t_t5->SetBranchAddress("T5_main_hit_pos_y_error", &t5_main_hit_pos_y_error);
+    t_t5->SetBranchAddress("T5_all_hits_pos_x", &t5_all_hits_pos_x);
+    t_t5->SetBranchAddress("T5_all_hits_pos_y", &t5_all_hits_pos_y);
+    t_t5->SetBranchAddress("T5_all_hits_pos_x_error", &t5_all_hits_pos_x_error);
+    t_t5->SetBranchAddress("T5_all_hits_pos_y_error", &t5_all_hits_pos_y_error);
+    t_t5->SetBranchAddress("T5_all_hits_time", &t5_all_hits_time);
+    t_t5->SetBranchAddress("T5_all_hits_charge", &t5_all_hits_charge);
+    t_t5->SetBranchAddress("T5_all_hits_is_in_time_window", &t5_all_hits_is_in_time_window);
+    t_t5->SetBranchAddress("T5_all_hits_is_in_bounds", &t5_all_hits_is_in_bounds);
+
+
+    // t_t5->SetBranchAddress("T5_particle_nr", &T5_particle_nr);
+    // t_t5->SetBranchAddress("T5_HasValidHit", &T5_HasValidHit);
+    // t_t5->SetBranchAddress("T5_HasMultipleScintillatorsHit",
+    //                        &T5_HasMultipleScintillatorsHit);
+    // t_t5->SetBranchAddress("T5_HasOutOfTimeWindow", &T5_HasOutOfTimeWindow);
+    // t_t5->SetBranchAddress("T5_HasInTimeWindow", &T5_HasInTimeWindow);
+    // t_t5->SetBranchAddress("T5_hit_is_in_bounds", &T5_hit_is_in_bounds);
+    // t_t5->SetBranchAddress("T5_hit_pos_x", &T5_hit_pos_x);
+    // t_t5->SetBranchAddress("T5_hit_pos_y", &T5_hit_pos_y);
+    // t_t5->SetBranchAddress("T5_hit_time", &T5_hit_time);
+    // t_t5->SetBranchAddress("T5_secondary_hit_is_in_bounds",
+    //                        &T5_secondary_hit_is_in_bounds);
+    // t_t5->SetBranchAddress("T5_secondary_hit_pos_x", &T5_secondary_hit_pos_x);
+    // t_t5->SetBranchAddress("T5_secondary_hit_pos_y", &T5_secondary_hit_pos_y);
+    // t_t5->SetBranchAddress("T5_secondary_hit_time", &T5_secondary_hit_time);
 
     // Prepare Output File & Tree
     TString suffix = stem;
@@ -598,6 +653,18 @@ int main(int argc, char **argv) {
       t_out->Branch("vme_act5_r_charge", &act5_r_charge);
       t_out->Branch("vme_act0_l_time", &act0_l_time);
       t_out->Branch("vme_act0_r_time", &act0_r_time);
+      t_out->Branch("vme_act1_l_time", &act1_l_time);
+      t_out->Branch("vme_act1_r_time", &act1_r_time);
+      t_out->Branch("vme_act2_l_time", &act2_l_time);
+      t_out->Branch("vme_act2_r_time", &act2_r_time);
+      t_out->Branch("vme_act3_l_time", &act3_l_time);
+      t_out->Branch("vme_act3_r_time", &act3_r_time);
+      t_out->Branch("vme_act4_l_time", &act4_l_time);
+      t_out->Branch("vme_act4_r_time", &act4_r_time);
+      t_out->Branch("vme_act5_l_time", &act5_l_time);
+      t_out->Branch("vme_act5_r_time", &act5_r_time);
+      t_out->Branch("vme_mu_tag_l_time", &mu_tag_l_time);
+      t_out->Branch("vme_mu_tag_r_time", &mu_tag_r_time);
       t_out->Branch("vme_tof_t0t1", &tof_t0t1);
       t_out->Branch("vme_tof_t0t4", &tof_t0t4);
       t_out->Branch("vme_tof_t4t1", &tof_t4t1);
@@ -631,21 +698,39 @@ int main(int argc, char **argv) {
 
     // Create vme_ prefixed Output Branches for T5
     t_out->Branch("T5_event_nr", &T5_event_nr);
-    t_out->Branch("T5_particle_nr", &T5_particle_nr);
-    t_out->Branch("T5_HasValidHit", &T5_HasValidHit);
-    t_out->Branch("T5_HasMultipleScintillatorsHit",
-                  &T5_HasMultipleScintillatorsHit);
-    t_out->Branch("T5_HasOutOfTimeWindow", &T5_HasOutOfTimeWindow);
-    t_out->Branch("T5_HasInTimeWindow", &T5_HasInTimeWindow);
-    t_out->Branch("T5_hit_is_in_bounds", &T5_hit_is_in_bounds);
-    t_out->Branch("T5_hit_pos_x", &T5_hit_pos_x);
-    t_out->Branch("T5_hit_pos_y", &T5_hit_pos_y);
-    t_out->Branch("T5_hit_time", &T5_hit_time);
-    t_out->Branch("T5_secondary_hit_is_in_bounds",
-                  &T5_secondary_hit_is_in_bounds);
-    t_out->Branch("T5_secondary_hit_pos_x", &T5_secondary_hit_pos_x);
-    t_out->Branch("T5_secondary_hit_pos_y", &T5_secondary_hit_pos_y);
-    t_out->Branch("T5_secondary_hit_time", &T5_secondary_hit_time);
+    t_out->Branch("T5_hit_bitmask", &t5_hit_bitmask);
+    t_out->Branch("T5_n_main_bunch_particles", &t5_n_main_bunch_particles);
+    t_out->Branch("T5_main_hit_time", &t5_main_hit_time);
+    t_out->Branch("T5_main_hit_charge", &t5_main_hit_charge);
+    t_out->Branch("T5_main_hit_pos_x", &t5_main_hit_pos_x);
+    t_out->Branch("T5_main_hit_pos_y", &t5_main_hit_pos_y);
+    t_out->Branch("T5_main_hit_pos_x_error", &t5_main_hit_pos_x_error);
+    t_out->Branch("T5_main_hit_pos_y_error", &t5_main_hit_pos_y_error);
+    t_out->Branch("T5_all_hits_pos_x", &t5_all_hits_pos_x);
+    t_out->Branch("T5_all_hits_pos_y", &t5_all_hits_pos_y);
+    t_out->Branch("T5_all_hits_pos_x_error", &t5_all_hits_pos_x_error);
+    t_out->Branch("T5_all_hits_pos_y_error", &t5_all_hits_pos_y_error);
+    t_out->Branch("T5_all_hits_time", &t5_all_hits_time);
+    t_out->Branch("T5_all_hits_charge", &t5_all_hits_charge);
+    t_out->Branch("T5_all_hits_is_in_time_window", &t5_all_hits_is_in_time_window);
+    t_out->Branch("T5_all_hits_is_in_bounds", &t5_all_hits_is_in_bounds);
+
+
+    // t_out->Branch("T5_particle_nr", &T5_particle_nr);
+    // t_out->Branch("T5_HasValidHit", &T5_HasValidHit);
+    // t_out->Branch("T5_HasMultipleScintillatorsHit",
+    //               &T5_HasMultipleScintillatorsHit);
+    // t_out->Branch("T5_HasOutOfTimeWindow", &T5_HasOutOfTimeWindow);
+    // t_out->Branch("T5_HasInTimeWindow", &T5_HasInTimeWindow);
+    // t_out->Branch("T5_hit_is_in_bounds", &T5_hit_is_in_bounds);
+    // t_out->Branch("T5_hit_pos_x", &T5_hit_pos_x);
+    // t_out->Branch("T5_hit_pos_y", &T5_hit_pos_y);
+    // t_out->Branch("T5_hit_time", &T5_hit_time);
+    // t_out->Branch("T5_secondary_hit_is_in_bounds",
+    //               &T5_secondary_hit_is_in_bounds);
+    // t_out->Branch("T5_secondary_hit_pos_x", &T5_secondary_hit_pos_x);
+    // t_out->Branch("T5_secondary_hit_pos_y", &T5_secondary_hit_pos_y);
+    // t_out->Branch("T5_secondary_hit_time", &T5_secondary_hit_time);
 
     // -------------------------------------------------------------
     // Main Merging Loop
