@@ -12,7 +12,7 @@ from .beam_selection import Cut
 from .beam_selection import BeamSelection
 from .beam_selection import print_cherenkov_thresholds
 from .beam_selection import SelectionMonitor
-
-__all__ = ["CalibrationDBInterface","WaveformProcessingTeststand","WaveformProcessingmPMT","do_pulse_finding", "do_pulse_finding_vect","charge_calculation_mPMT_method","PMTMapping","DetectorGeometry","production_utils","BeamAnalysis", "DetectorDB", "ReadBeamRunInfo", "DataLoader", "Cut", "BeamSelection", "print_cherenkov_thresholds", "SelectionMonitor"]
+from .wcsim_wcte_coordinate_transformation import WCSimCoordinateTransform, WCSimPMTMapping
+__all__ = ["CalibrationDBInterface","WaveformProcessingTeststand","WaveformProcessingmPMT","do_pulse_finding", "do_pulse_finding_vect","charge_calculation_mPMT_method","WCSimPMTMapping","DetectorGeometry","production_utils","BeamAnalysis", "DetectorDB", "ReadBeamRunInfo", "DataLoader", "Cut", "BeamSelection", "print_cherenkov_thresholds", "SelectionMonitor","WCSimCoordinateTransform","WCSimPMTMapping"]
 
 
