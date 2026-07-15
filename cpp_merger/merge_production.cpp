@@ -529,23 +529,23 @@ int main(int argc, char **argv) {
 
     // Set Branches - T5
     t_t5->SetBranchAddress("event_nr", &T5_event_nr);
-    t_t5->SetBranchAddress("T5_hit_bitmask", &t5_hit_bitmask);
-    t_t5->SetBranchAddress("T5_n_main_bunch_particles",
+    t_t5->SetBranchAddress("t5_hit_bitmask", &t5_hit_bitmask);
+    t_t5->SetBranchAddress("t5_n_main_bunch_particles",
                            &t5_n_main_bunch_particles);
-    t_t5->SetBranchAddress("T5_main_hit_time", &t5_main_hit_time);
-    t_t5->SetBranchAddress("T5_main_hit_charge", &t5_main_hit_charge);
-    t_t5->SetBranchAddress("T5_main_hit_pos_x", &t5_main_hit_pos_x);
-    t_t5->SetBranchAddress("T5_main_hit_pos_y", &t5_main_hit_pos_y);
-    t_t5->SetBranchAddress("T5_main_hit_pos_x_error", &t5_main_hit_pos_x_error);
-    t_t5->SetBranchAddress("T5_main_hit_pos_y_error", &t5_main_hit_pos_y_error);
-    t_t5->SetBranchAddress("T5_all_hits_pos_x", &t5_all_hits_pos_x);
-    t_t5->SetBranchAddress("T5_all_hits_pos_y", &t5_all_hits_pos_y);
-    t_t5->SetBranchAddress("T5_all_hits_pos_x_error", &t5_all_hits_pos_x_error);
-    t_t5->SetBranchAddress("T5_all_hits_pos_y_error", &t5_all_hits_pos_y_error);
-    t_t5->SetBranchAddress("T5_all_hits_time", &t5_all_hits_time);
-    t_t5->SetBranchAddress("T5_all_hits_charge", &t5_all_hits_charge);
-    t_t5->SetBranchAddress("T5_all_hits_is_in_time_window", &t5_all_hits_is_in_time_window);
-    t_t5->SetBranchAddress("T5_all_hits_is_in_bounds", &t5_all_hits_is_in_bounds);
+    t_t5->SetBranchAddress("t5_main_hit_time", &t5_main_hit_time);
+    t_t5->SetBranchAddress("t5_main_hit_charge", &t5_main_hit_charge);
+    t_t5->SetBranchAddress("t5_main_hit_pos_x", &t5_main_hit_pos_x);
+    t_t5->SetBranchAddress("t5_main_hit_pos_y", &t5_main_hit_pos_y);
+    t_t5->SetBranchAddress("t5_main_hit_pos_x_error", &t5_main_hit_pos_x_error);
+    t_t5->SetBranchAddress("t5_main_hit_pos_y_error", &t5_main_hit_pos_y_error);
+    t_t5->SetBranchAddress("t5_all_hits_pos_x", &t5_all_hits_pos_x);
+    t_t5->SetBranchAddress("t5_all_hits_pos_y", &t5_all_hits_pos_y);
+    t_t5->SetBranchAddress("t5_all_hits_pos_x_error", &t5_all_hits_pos_x_error);
+    t_t5->SetBranchAddress("t5_all_hits_pos_y_error", &t5_all_hits_pos_y_error);
+    t_t5->SetBranchAddress("t5_all_hits_time", &t5_all_hits_time);
+    t_t5->SetBranchAddress("t5_all_hits_charge", &t5_all_hits_charge);
+    t_t5->SetBranchAddress("t5_all_hits_is_in_time_window", &t5_all_hits_is_in_time_window);
+    t_t5->SetBranchAddress("t5_all_hits_is_in_bounds", &t5_all_hits_is_in_bounds);
 
 
     // t_t5->SetBranchAddress("T5_particle_nr", &T5_particle_nr);
