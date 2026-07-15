@@ -238,35 +238,108 @@ Common functions used across all production scripts are in `analysis_tools/produ
 
 # Beam monitor PID
 
-The `script/WCTE_beam_analysis.py` code performs the 1pe calibration of the ACT PMTs as well as the *basic* event PID and momentum measurement based on VME monitor information (TOF, charge deposited in ACTs, etc...).
+`scripts/WCTE_beam_analysis.py` performs particle identification (PID) and momentum estimation for beamline runs, using the VME beam-monitor detectors (T0, T1, T4, T5/TOF, and the ACT Cherenkov counters). It calibrates the ACT PMTs (1 p.e. calibration), tags particle species event-by-event, and estimates the momentum of each particle species both just after the CERN beam pipe and at the WCTE tank window.
 
-The code uses the BeamAnalysis defined in `analysis_tools/beam_monitors_pid.py`. 
+It is a **template** PID: reasonable defaults are used throughout, but the selection is not tuned or optimised for any specific physics analysis. Treat it as a starting point to build your own beam PID on top of, not as a final analysis tool.
 
-To call the script on the lxplus machines, run:
-`python3  script/WCTE_beam_analysis.py --r <run_number>  -i <input_file>  -o <output_base_dir>`
+The logic lives in `BeamAnalysis` (`analysis_tools/beam_monitors_pid.py`); the script is a thin CLI wrapper around it.
 
-the VME merged data used by the beam analysis code is located at:
+## Detectors used
 
-`/eos/experiment/wcte/data/2025_commissioning/offline_data_vme_match/`
+| Detector | Channels | Role |
+|---|---|---|
+| T0 | 0–3 | Upstream timing reference (start of TOF) |
+| T1 | 4–7 | Downstream-of-T0 timing (T0–T1 TOF used for proton/deuteron/helium-3/triton tagging) |
+| Hole counter (HC) | 9–10 | Vetoes triggers with an off-axis/halo hit |
+| ACT0–2 ("e-veto") | 12–17 | Cherenkov counters used to tag electrons/positrons |
+| ACT3–5 ("tagger") | 18–23 | Cherenkov counters used to separate muons/pions (ACT5 optional — some runs don't have it) |
+| T4 | 42–43 | Further downstream timing reference |
+| T5 / TOF bars | 48–63 (8 bars × 2 SiPMs) | End-of-line scintillator bars; also used as a "reached the tank" requirement |
+| Muon tagger | subset of ACT3–5 channels | Auxiliary muon tag, used when the ACT3-5 charge distribution doesn't show a clean muon/pion minimum |
 
-the code looks up the run information from the .json file of run information compiled by Laurence from the Google sheet. 
+Reference TDC channels 31 and 46 are used to correct all other times.
 
+## Requirements / inputs
 
-All of the information about this version of the code (made for the winter 2025-2026 data production is available here: 
-https://www.overleaf.com/read/fshzdwxbjwnn#c0127f please read ! Email Alie or Bruno if you have any questions. 
+Run the script from the `scripts/` directory — it resolves two paths relative to its own location:
+- `../analysis_tools` (the package, via `sys.path.append("../")`)
+- `../include/1pe_calibration.json` (ACT PMT gain/pedestal calibration)
 
-All the plots needed for visualising the selection are saved in the same folder that you output to.
+It also reads, from fixed EOS paths (not configurable via CLI):
+- `/eos/experiment/wcte/configuration/run_info/google_sheet_beam_data.json` — run metadata (beam momentum, ACT refractive indices, beam configuration, whether ACT5 is installed, etc.), compiled by Laurence from the Google sheet
+- `/eos/experiment/wcte/configuration/run_info/beamline_equipment_settings.csv` — collimator/acceptance jaw settings
 
-You should have a look at them to check that the selection behaves as expected, an example is provided in notebooks/plots.
+Input ROOT file(s) must contain a `WCTEReadoutWindows` tree with the `beamline_pmt_tdc_times`, `beamline_pmt_tdc_ids`, `beamline_pmt_qdc_charges`, `beamline_pmt_qdc_ids`, and `spill_counter` branches — i.e. VME-merged offline data, e.g. from `/eos/experiment/wcte/data/2025_commissioning/offline_data_vme_match/`.
 
-The code also calculates the mean momentum for each particle type before exiting the CERN beam pipe (upstream of T0) 
-and right after exiting the WCTE beam window (i.e. into the tank). These momenta are also estimated for each trigger,
-based on the estimated PID (shown on plots but not shared due to the large error and general unreliability). 
-Note the error on these momenta (propagated from the time of flight resultion, taken as the
-standard deviation of the TOF distribution for electrons) is very large for slow particles. Protons and deuterons events are 
-identified using their time of flight but 3He nuclei aren't. The total charge in the TOF detector is saved in the output file but
-no cut is placed on it. The "is_kept" branch of the output file stores information on whether the trigger passes the basic beam
-requirements (no hits above threshold in the hole counters, hits in all T0, T1, T2 PMTs etc...). 
+The run must satisfy preconditions read from the run-info JSON, or the script raises and exits:
+- ACT0 must be in the beamline; lead glass must be out of the beamline.
+- Unless `--no_acts` is passed: ACT0/1/2 must all share the same refractive index, ACT3 and ACT4 must be in the beamline, and ACT3/4(/5) must share the same refractive index.
 
-More information about the quality of each trigger (if the particle reached all trigger scintillators, DAQ looked ok etc...) is available in the corresponding bitmask variables. Please refer to this presentation for more details on how to use the code and what it does: https://wcte.hyperk.ca/meetings/collaboration-meetings/20260216/meeting-5/beam-monitor-status-overview/plenary_talk.pdf
+## Usage
+
+```bash
+python3 WCTE_beam_analysis.py -r <run_number> -i <input_file(s)> -o <output_dir> [options]
+```
+
+| Flag | Required | Description |
+|---|---|---|
+| `-r`, `--run_number` | yes | Run number; must appear as `R<run_number>` in every input filename |
+| `-i`, `--input_files` | yes | One or more `WCTEReadoutWindows` ROOT files (space-separated) |
+| `-o`, `--output_dir` | yes | Directory for the output ROOT file and PDF (created if missing) |
+| `--debug` | no | Only process the first 5000 events |
+| `--no_acts` | no | Minimum-bias mode: relax the requirement that upstream/downstream ACTs share a refractive index (for runs without a full ACT lineup) |
+| `--is_kaon_run` | no | Relabels identified muons as kaons, uses kaon dE/dx tables for their momentum estimate, and records the flag in `run_info` |
+| `--use_emupi_TOF_separation` | no | Use time-of-flight instead of ACT3-5 charge to separate muons/pions (needed below the ~300 MeV/c muon Cherenkov threshold). Automatically forced on for runs before 1441 with `\|momentum\| < 300` MeV/c |
+
+Example:
+```bash
+python3 WCTE_beam_analysis.py -r 2285 \
+  -i /eos/experiment/wcte/data/2025_commissioning/offline_data_vme_match/WCTE_offline_R2285S0_VME_matched.root \
+  -o ./beam_data_out
+```
+
+Multiple input files for the same run can be passed at once; each is processed independently and produces its own pair of output files.
+
+## What it does
+
+For each input file, in order:
+1. **1 p.e. calibration** (`adjust_1pe_calibration`) — refines the ACT PMT gain calibration.
+2. **Proton/deuteron/helium-3/triton tagging** (`tag_protons_TOF`) — via the T0–T1 time of flight, using theoretical TOF cuts computed from the nominal beam momentum. Done first to avoid double-counting these particles as something else. Protons are only tagged above 250 MeV/c; deuterons/helium-3/tritons only above 350 MeV/c.
+3. **Electron/positron tagging** (`tag_electrons_ACT02`) — from a charge threshold on the ACT0–2 ("e-veto") sum.
+4. **Sanity-check plots** (`plot_ACT35_left_vs_right`, `plot_ACT02_left_vs_right`) — visualise that the proton/electron removal looks correct.
+5. **Muon/pion tagging** (`tag_muons_pions_ACT35`) — from the ACT3–5 ("tagger") charge, or from TOF instead if `--use_emupi_TOF_separation` applies. Falls back to an auxiliary muon-tagger cut if the ACT3-5 muon/pion populations don't show a clean minimum.
+6. **TOF offset correction** (`measure_particle_TOF`) — corrects for cable-length-type offsets so later momentum estimates are meaningful.
+7. **Momentum estimation** (`estimate_particle_momentum`) — mean momentum per particle species and per-trigger (not output to production 1), both just after the CERN beam pipe and at the WCTE tank window. The per-trigger error is taken from the electron TOF resolution (std of a Gaussian fit), so it is large for slow/heavy particles.
+8. **POT-normalised yield plot** (`plot_number_particles_per_POT`).
+9. **Event-quality plot** (`plot_event_quality_bitmask`).
+10. **ROOT output** (`output_to_root`).
+
+If no triggers pass the basic event-quality requirements, the analysis is skipped for that file (the PDF is still closed cleanly and a message is printed).
+
+## Output
+
+For each input file `<base>.root`, two files are written to `-o`:
+
+- **`<base>_PID.pdf`** — every diagnostic plot produced above (ACT/TOF distributions, cut lines, per-particle momentum plots, event-quality histograms, etc.). Always check these to confirm the selection behaved sensibly for that run.
+- **`<base>_beam_analysis.root`** — three trees:
+  - **`beam_analysis`** — one entry per trigger: `event_id`, `spill_number`, per-channel TDC-corrected times and QDC charges/p.e. for T0/T1/T4/ACT0-5/muon tagger, `tof_t0t1` and other TOF combinations, `evt_quality_bitmask`, `digi_issues_bitmask`.
+    - `evt_quality_bitmask` bits: `0` T0/T1 TDC missing, `1` T4 TDC missing, `2` T5 TDC missing, `3` hole-counter hit, `4` T4 QDC missing, `5` more than one T5 bar hit.
+    - `digi_issues_bitmask` bits: `0` QDC failure, `1` missing digitiser times.
+  - **`run_info`** — one entry: run number, nominal beam momentum, ACT refractive indices, whether ACT5 is present, jaw positions, `is_kaon_run` flag.
+  - **`scalar_results`** — one entry: the cut values used (TOF/ACT cut lines), number of triggers by particle species, per-species TOF and momentum means/errors (near the CERN pipe and at the WCTE window), and nominal (theoretical) TOF per species.
+
+  Per-trigger PID/momentum branches (`is_muon`, `is_electron`, ..., `final_momentum`, ...) are only written when `is_beam_paper_analysis=True`, which this CLI never sets — so only the aggregate PID counts and per-species momentum summaries in `scalar_results` are available from a standalone run. Note also that `is_kept` (whether a trigger passed the basic beam requirements) is used internally to count total triggers but is dropped before writing, so it is **not** present in the output `beam_analysis` tree.
+
+## Caveats
+
+- Helium-3 nuclei are tagged by TOF the same way as protons/deuterons/tritons, but the magnetic-rigidity/charge correction used for their theoretical TOF cut has not been as thoroughly validated — treat with care.
+- No cut is applied on the T5 (TOF detector) total charge; it is saved in the output for reference only.
+- Per-trigger momentum estimates carry large errors for slow/heavy particles, since the TOF resolution is derived from the (fast) electron peak.
+- See the beam PID write-up and collaboration meeting slides below for the full physics rationale.
+- The event bitmask is != 0 if:
+    - The TOF is too short (< 10ns)
+    - The particle does not reach T5 (though this is also checked more directly by Frantisek's BRB analysis)
+    - The TDC or QDC failed
+
+Email Alie if you have any questions.
 

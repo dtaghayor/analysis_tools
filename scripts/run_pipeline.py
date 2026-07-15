@@ -71,8 +71,16 @@ if __name__ == "__main__":
         print(f"[ERROR] {e}")
         sys.exit(1)
 
+    
     trigger_type       = run_info["trigger_type"]
     beam_analysis_type = run_info["beam_analysis_type"]
+
+    kaon_runs_list = [2284, 2288, 2292, 2293, 2295, 2297, 2299, 2300, 2301, 2304, 2320, 2323, 2324, 2338, 2342]
+
+    if args.run_number in kaon_runs_list:
+        # Handle kaon runs differently
+        beam_analysis_type = "kaon_run"
+
 
     # ── Resolve which steps to run ─────────────────────────────────────────────
     # Steps to pass to the hw_trigger or self_trigger pipeline
@@ -85,7 +93,7 @@ if __name__ == "__main__":
     else:
         #user has specified steps to run specific steps
         requested                   = set(args.steps)
-        run_vme_processing          = (beam_analysis_type in ["normal", "missing_act"]) and "beam" in requested
+        run_vme_processing          = (beam_analysis_type in ["normal", "missing_act", "kaon_run"]) and "beam" in requested
         run_t5_analysis             = "t5" in requested
         pipeline_requested          = requested - {"beam", "t5"}
         trigger_type_pipeline_steps = pipeline_requested or None
@@ -140,6 +148,8 @@ if __name__ == "__main__":
         )
         if beam_analysis_type == "missing_act":
             beam_cmd.append("--no_acts")
+        if beam_analysis_type == "kaon_run":
+            beam_cmd.append("--is_kaon_run")
         result = subprocess.run(beam_cmd)
         if result.returncode != 0:
             print(f"[ERROR] Beam analysis failed for run {args.run_number}")
