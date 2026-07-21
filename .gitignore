@@ -32,3 +32,6 @@ scripts/batchScripts/
 #dirty fix to clean the git repo 
 crossing_muon_study/
 
+
+# analysis output data
+analysis_examples/*.parquet
