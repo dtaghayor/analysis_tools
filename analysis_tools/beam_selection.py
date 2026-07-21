@@ -243,6 +243,9 @@ _VARIABLE_ALIASES = {
     "mu_tag_total": "vme_mu_tag_total",
     "act_0_charge": "vme_act0_l_charge",
     "T5_particle_nr": "T5_particle_nr",
+    "T5_HasValidHit": "T5_HasValidHit",
+    "T5_HasInTimeWindow": "T5_HasInTimeWindow",
+    
 
 }
 
@@ -298,6 +301,10 @@ _VARIABLE_UNITS = {
     'vme_mu_tag_l_charge': "a.u.",
     'vme_mu_tag_r_charge': "a.u.",
     'T5_particle_nr': " ",
+    'T5_HasValidHit': " ",
+    'T5_HasInTimeWindow': " ",
+    
+
 }
 
 

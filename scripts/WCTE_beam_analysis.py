@@ -52,6 +52,12 @@ def parse_args():
         help="Treat identified muons as kaons (uses kaon dEdx tables for momentum estimation, records flag in run_info)"
     )
 
+    parser.add_argument(
+        "--use_emupi_TOF_separation", action = "store_true",
+        help="Use Time of Flight instead of ACTs for low momentum runs where muons are below threshold"
+
+    )
+
     return parser.parse_args()
 
 
@@ -92,8 +98,22 @@ for input_file in args.input_files:
 
     print(f"\n{'#'*60}\n  {os.path.basename(input_file)}\n{'#'*60}")
 
+
+    #for low momentum runs before the degaussing, use the emupi TOF separation instead of the ACT selection
+    use_emupi_TOF_separation = args.use_emupi_TOF_separation
+    
+    #overwrite the use_emupi_TOF_separation to True for low momentum runs before the degaussing, as the ACTs are not working properly for these runs
+    if run_number < 1441 and abs(run_momentum) < 300:
+        use_emupi_TOF_separation = True
+        
+
     #Set up a beam analysis class
-    ana = BeamAnalysis(run_number, run_momentum, n_eveto_group, n_tagger_group, there_is_ACT5, args.output_dir, pdf_name, is_beam_paper_analysis=False, is_kaon_run=args.is_kaon_run)
+    ana = BeamAnalysis(run_number, run_momentum, n_eveto_group, n_tagger_group, there_is_ACT5, args.output_dir, pdf_name, is_beam_paper_analysis=False, is_kaon_run=args.is_kaon_run, use_emupi_TOF_separation=use_emupi_TOF_separation)
+
+    if args.use_emupi_TOF_separation:
+        require_t5 = False
+
+    
 
     #Store into memory the number of events desired,
     # set require_t5 to False if you do not require that the particle reaches T5
